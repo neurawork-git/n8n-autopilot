@@ -1,6 +1,6 @@
 # Overview — n8nac & n8n-autopilot Plugin
 
-*Einseiter — Stand Mai 2026 (Plugin v3.6.0, n8nac ≥ 2.2.0).*
+*Einseiter — Stand Mai 2026 (Plugin v3.6.1, n8nac ≥ 2.2.0).*
 *Tiefe Details: [ARCHITECTURE.md](ARCHITECTURE.md) · [MCP.md](MCP.md).*
 
 ---

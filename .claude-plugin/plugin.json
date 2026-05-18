@@ -1,6 +1,6 @@
 {
   "name": "n8n-autopilot",
-  "version": "3.6.0",
+  "version": "3.6.1",
   "description": "Claude Code plugin for building, validating, and deploying n8n workflows via n8nac CLI",
   "author": {
     "name": "Neurawork",

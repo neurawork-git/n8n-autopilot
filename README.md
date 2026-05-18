@@ -1,10 +1,16 @@
+<div align="right">
+
+**English** · [Deutsch](README.de.md)
+
+</div>
+
 <div align="center">
 
 # 🤖 n8n-autopilot
 
 **A Claude Code plugin that turns natural-language prompts into validated, deployed n8n workflows.**
 
-[![Version](https://img.shields.io/badge/version-3.6.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.6.1-blue.svg)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![n8nac](https://img.shields.io/badge/n8nac-%E2%89%A52.2.0-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
@@ -360,7 +366,7 @@ npx n8nac workspace pin-instance / clear-instance      # bind workspace to a spe
 ```
 n8n-autopilot/
 ├── .claude-plugin/
-│   ├── plugin.json                  Plugin manifest (v3.6.0)
+│   ├── plugin.json                  Plugin manifest (v3.6.1)
 │   └── marketplace.json             Marketplace entry
 │
 ├── skills/

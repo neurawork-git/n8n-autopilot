@@ -3,6 +3,8 @@
 This repo uses the **n8n-autopilot plugin** for Claude Code.
 Workflows are TypeScript (Decorator format). Never write n8n JSON by hand.
 
+> **You are in the INTERNAL repo (`nashtrader/n8n-autopilot-internal`).** The matching public repo is `nashtrader/n8n-autopilot` at `~/Documents/Repositories/n8n-autopilot-public/`. When the user asks to release / publish / ship to public, follow [`RELEASE_PROCESS.md`](RELEASE_PROCESS.md) — it is the authoritative manual procedure for syncing internal → public.
+
 ## Setup
 
 **Brand-new repo? One command:**

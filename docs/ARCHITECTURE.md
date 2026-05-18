@@ -1,6 +1,6 @@
 # Architektur: n8n-autopilot Plugin
 
-*Stand: Mai 2026 — Plugin v3.6.0, n8nac ≥ 2.2.0.*
+*Stand: Mai 2026 — Plugin v3.6.1, n8nac ≥ 2.2.0.*
 
 ## Grundprinzip
 

@@ -2,6 +2,11 @@
 
 All notable changes to **n8n-autopilot** are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [3.6.1] — 2026-05-18
+
+### Added
+- **`README.de.md`** — full German translation of the README. Language-switcher banner at the top of both READMEs follows the GitHub `README.<locale>.md` convention.
+
 ## [3.6.0] — 2026-05-18
 
 ### Added
