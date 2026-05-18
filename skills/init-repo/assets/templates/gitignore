@@ -1,0 +1,50 @@
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Secrets — never commit
+.env
+.env.local
+.mcp.json
+
+# n8nac — runtime config (regenerate via `npx n8nac init`)
+n8nac-config.json
+n8nac-instance.json
+
+# n8nac — sync state + journal
+.n8n-state.json
+workflows/**/.n8n-state.json
+workflows/**/.n8n-sync-events.jsonl
+
+# n8nac — generated TypeScript stubs
+workflows/**/n8n-workflows.d.ts
+workflows/**/tsconfig.json
+
+# n8nac — AI context (regenerate via `npx n8nac update-ai`)
+AGENTS.md
+.agents/
+
+# Node schema cache — instance-specific (varies per user)
+# Run `/n8n-autopilot:pull-schemas` after first clone
+schemas/nodes/*.json
+schemas/nodes/**/*.json
+schemas/_index.json
+!schemas/nodes/.gitkeep
+
+# Editor
+.vscode/
+.idea/
+.cursor/
+.DS_Store
+
+# n8n-as-code helper wrappers (Windows)
+n8nac-skills
+n8nac-skills.cmd
+
+# Local Claude Code settings
+.claude/settings.json
+.claude/settings.local.json
+
+# Compiled workflow output
+out/

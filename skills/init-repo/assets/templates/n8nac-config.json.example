@@ -1,0 +1,6 @@
+{
+  "host": "https://your-n8n-instance.example.com",
+  "apiKey": "REPLACE_WITH_N8N_API_KEY",
+  "projectId": null,
+  "instanceId": "default"
+}

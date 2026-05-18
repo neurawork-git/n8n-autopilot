@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "n8n-as-code": {
+      "command": "npx",
+      "args": ["--yes", "n8nac", "mcp"]
+    }
+  }
+}

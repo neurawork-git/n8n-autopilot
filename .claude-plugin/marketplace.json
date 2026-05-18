@@ -1,0 +1,17 @@
+{
+  "name": "n8n-autopilot",
+  "owner": {
+    "name": "Neurawork",
+    "email": "maximilian.koenig@neurawork.ai"
+  },
+  "plugins": [
+    {
+      "name": "n8n-autopilot",
+      "source": "./",
+      "description": "Build, validate, and deploy n8n workflows from Claude Code. Requires Node.js 18+ and n8nac CLI ≥ 2.2.0 (auto-installed via npx). Ships init-repo, build-workflow, deploy, pull-schemas, sync-credentials, inventory, data-tables and curated knowledge skills, plus SessionStart hooks for staleness detection with auto-reactions.",
+      "version": "3.6.0",
+      "category": "productivity",
+      "homepage": "https://github.com/nashtrader/n8n-autopilot"
+    }
+  ]
+}
