@@ -17,6 +17,11 @@
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-credential-freshness.sh --quiet 2>&1 || true",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-workspace-migration.sh --quiet 2>&1 || true",
+            "timeout": 15
           }
         ]
       }

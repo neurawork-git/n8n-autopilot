@@ -10,10 +10,10 @@
 
 **A Claude Code plugin that turns natural-language prompts into validated, deployed n8n workflows.**
 
-[![Version](https://img.shields.io/badge/version-3.6.1-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-4.1.0-blue.svg)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
-[![n8nac](https://img.shields.io/badge/n8nac-%E2%89%A52.2.0-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
+[![n8nac](https://img.shields.io/badge/n8nac-2.2.1%20(min%202.2.0)-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
 [![Claude Code](https://img.shields.io/badge/claude%20code-plugin-d97757.svg)](https://docs.claude.com/claude-code)
 
 ```
@@ -79,7 +79,7 @@ Claude runs a 3-phase pipeline automatically:
 /n8n-autopilot:init-repo my-customer
 ```
 
-Scaffolds the directory layout, writes a plugin-compatible `CLAUDE.md`, runs `npx n8nac init`, pulls node schemas, and verifies — so the first `build-workflow` call works immediately.
+Scaffolds the directory layout, writes a plugin-compatible `CLAUDE.md`, drives the n8nac ≥ 2.2 setup flow (`setup --mode connect-existing` + `workspace pin-instance` + `set-sync-folder`), pulls node schemas, and verifies — so the first `build-workflow` call works immediately.
 
 ### Deploy an existing workflow file
 
@@ -215,60 +215,62 @@ No n8n API needed         Decorator-TS format,            n8n API required
 - **Running n8n instance** — local (`docker run -p 5678:5678 n8nio/n8n`) or [n8n Cloud](https://app.n8n.cloud)
 - **n8n API key** — n8n UI → Settings → n8n API → Create API Key
 
-### 1. Install the plugin
+### 1. Install both plugins
+
+n8n-autopilot leans on Etienne Lescot's `n8n-as-code` plugin for the `n8n-architect` skill (schema research + authoring rules + AI/LangChain rules). Install both:
 
 ```bash
-claude plugin marketplace add nashtrader/n8n-autopilot
+# n8n-autopilot — workflow lifecycle orchestration
+claude plugin marketplace add neurawork-git/n8n-autopilot
 claude plugin install n8n-autopilot@n8n-autopilot
+
+# n8n-as-code (companion) — n8n knowledge base + authoring rules
+claude plugin marketplace add EtienneLescot/n8n-as-code
+claude plugin install n8n-as-code@n8nac-marketplace
 ```
 
-**For teams:** commit this to `.claude/settings.json` — teammates get the plugin automatically:
+**For teams:** commit this to `.claude/settings.json` — teammates get both plugins automatically:
 
 ```json
 {
   "extraKnownMarketplaces": {
     "n8n-autopilot": {
-      "source": { "source": "github", "repo": "nashtrader/n8n-autopilot" }
+      "source": { "source": "github", "repo": "neurawork-git/n8n-autopilot" }
+    },
+    "n8nac-marketplace": {
+      "source": { "source": "github", "repo": "EtienneLescot/n8n-as-code" }
     }
   },
   "enabledPlugins": {
-    "n8n-autopilot@n8n-autopilot": true
+    "n8n-autopilot@n8n-autopilot": true,
+    "n8n-as-code@n8nac-marketplace": true
   }
 }
 ```
 
-### 2. Configure MCP servers
+> **No `.mcp.json` needed.** n8n-autopilot 4.x is CLI-only — all schema research goes through `npx n8nac skills …`. The `mcp__n8n-as-code__*` namespace from older versions never had a stable upstream source (npm `n8nac mcp` is broken; Etienne's plugin ships skill knowledge, not an MCP server).
+
+### 2. Bind workspace to your n8n instance (n8nac ≥ 2.2)
+
+> **Reference n8nac version: 2.2.1.** The plugin targets the v2 manager-backed storage model — config lives in user home (`~/n8nac-config.json` + `~/.n8n-manager/`), NOT in the repo. The legacy `init` / `init-auth` / `init-project` commands were removed in 2.2.
 
 ```bash
-cp "$(claude plugin path n8n-autopilot)/.mcp.json.example" .mcp.json
+# 3a. Register the instance (API key piped on stdin — never in shell history)
+printf "%s" "$N8N_API_KEY" | npx n8nac setup --mode connect-existing \
+  --host "$N8N_API_URL" --api-key-stdin --json
+
+# 3b. Pin this workspace + tell n8nac where workflows live
+npx n8nac workspace pin-instance --instance-id <id-from-setup-output>
+npx n8nac workspace set-sync-folder workflows
+
+# 3c. Optional: scope this workspace to a specific n8n project
+npx n8nac workspace set-project --project-name Personal
+# or: npx n8nac workspace set-project --project-id <id>
 ```
 
-The `.mcp.json` is pre-configured and works out of the box — n8nac reads its config from `n8nac-config.json`:
+**Migrating from n8nac < 2.2?** Run `npx n8nac workspace migrate-v1 --write` once — it moves your legacy `./n8nac-config.json` into the user-home manager model.
 
-```json
-{
-  "mcpServers": {
-    "n8n-as-code": {
-      "command": "npx",
-      "args": ["--yes", "n8nac", "mcp"]
-    }
-  }
-}
-```
-
-### 3. Initialize n8nac sync
-
-```bash
-npx n8nac init
-```
-
-`init` prompts for the host URL, API key, and project, then writes `n8nac-config.json` (gitignored). For non-interactive setup (CI / agents):
-
-```bash
-npx n8nac init-auth --yes && npx n8nac init-project --yes
-```
-
-### 4. Pull node schemas
+### 3. Pull node schemas
 
 ```
 /n8n-autopilot:pull-schemas
@@ -276,13 +278,15 @@ npx n8nac init-auth --yes && npx n8nac init-project --yes
 
 Schemas are not committed — they are instance-specific (community nodes vary per user). This step populates `schemas/nodes/` with the core nodes plus whichever community nodes your n8n instance has installed. Re-run whenever you install a new community node or see stale-schema warnings at session start.
 
-### 5. Verify everything works
+### 4. Verify everything works
 
-```bash
-bash scripts/setup-check.sh
+```
+/n8n-autopilot:check-mcps
 ```
 
-Checks Node.js version, n8nac min-version (≥ 2.2.0), config, MCP entries, API credentials, live connectivity, and stale community node schemas. Fix any errors before building workflows.
+(or runs auto via SessionStart hook the next time you open Claude Code in this repo)
+
+Checks Node.js, n8nac CLI version (min 2.2.0, reference 2.2.1), workspace binding via `n8nac workspace status`, live n8n connectivity, companion plugin enabled, community-node schema coverage. Fix any errors before building workflows.
 
 ---
 
@@ -356,7 +360,19 @@ npx n8nac skills list --nodes --docs --guides          # enumerate available ref
 
 npx n8nac env list/add/update/pin/remove               # manage workspace environments (multiple n8n instances)
 npx n8nac env use <name>                               # switch active environment (alias: env pin)
+npx n8nac workspace status --json                      # effective workspace context (authoritative)
 npx n8nac workspace pin-instance / clear-instance      # bind workspace to a specific instance
+npx n8nac workspace set-sync-folder workflows          # tell n8nac where *.workflow.ts live
+npx n8nac workspace set-project --project-name <n>     # scope workspace to a specific n8n project
+npx n8nac workspace migrate-v1 --write                 # migrate legacy ./n8nac-config.json (n8nac < 2.2)
+npx n8nac setup --mode connect-existing --host <url> --api-key-stdin   # initial workspace binding
+
+npx n8nac credentials recipes --json                   # shared credential recipe catalogue (openai-native, slack-oauth, …)
+npx n8nac credentials inventory --json                 # local credential readiness inventory
+npx n8nac credentials ensure <recipeId> --host <url> --api-key-stdin   # create credential from recipe
+npx n8nac credentials test <id-or-recipeId>            # live-verify a credential
+
+npx n8nac workflow present <id> --json                 # resolve user-facing URL for a workflow (use instead of string-concat)
 ```
 
 ---
@@ -401,7 +417,6 @@ n8n-autopilot/
 │   ├── check-inventory-freshness.sh    Indirect: INVENTORY.md staleness (informational)
 │   └── ensure-mcp-trigger-setting.sh   PreToolUse on `n8nac push`: guards `availableInMCP`
 │
-├── .mcp.json.example                MCP server config template (copy to .mcp.json)
 ├── schemas/nodes/                   Cached node schemas (gitignored, populated by /pull-schemas)
 ├── docs/                            Architecture, MCP guide, credentials, community-node registry, inventory
 └── CHANGELOG.md                     Release history

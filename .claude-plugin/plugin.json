@@ -1,12 +1,12 @@
 {
   "name": "n8n-autopilot",
-  "version": "3.6.1",
-  "description": "Claude Code plugin for building, validating, and deploying n8n workflows via n8nac CLI",
+  "version": "4.1.0",
+  "description": "Claude Code plugin for building, validating, and deploying n8n workflows. Wraps the n8nac CLI (reference 2.2.1) and delegates schema research to the companion plugin `n8n-as-code` by Etienne Lescot.",
   "author": {
     "name": "Neurawork",
     "email": "maximilian.koenig@neurawork.ai"
   },
-  "repository": "https://github.com/nashtrader/n8n-autopilot",
+  "repository": "https://github.com/neurawork-git/n8n-autopilot",
   "license": "MIT",
   "keywords": ["n8n", "workflow", "automation", "n8nac", "mcp"],
   "userConfig": {

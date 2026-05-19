@@ -7,9 +7,11 @@ Workflows are TypeScript (Decorator format). Never write n8n JSON by hand.
 
 If you are starting from scratch, the plugin's `init-repo` skill has already scaffolded this layout. To re-verify:
 
-```bash
-bash "$(claude plugin path n8n-autopilot)/scripts/setup-check.sh"
 ```
+/n8n-autopilot:check-mcps
+```
+
+(SessionStart hook also runs the same check automatically when you open Claude Code in this repo.)
 
 ## Entry Point
 
@@ -41,10 +43,10 @@ Signals NOT auto-triggered (informational only): `check-inventory-freshness.sh` 
 |------|---------|
 | `workflows/` | `*.workflow.ts` files — your n8n workflows in Decorator-TS format |
 | `schemas/nodes/` | Cached node schemas for offline validation (gitignored, run `/n8n-autopilot:pull-schemas` after first clone) |
-| `n8nac-config.json` | n8nac instance + auth config (gitignored, run `npx n8nac init` to create) |
-| `.mcp.json` | MCP server config (gitignored) |
 | `data/` | Local data files used by workflows (CSV, JSON, etc.) |
 | `docs/` | Workflow design docs, runbooks |
+
+> **n8nac config:** Workspace + instance config lives in user home (`~/n8nac-config.json` + `~/.n8n-manager/`) under n8nac >= 2.2 — NOT in this repo. Bind this workspace to an n8n instance via `npx n8nac setup --mode connect-existing` + `npx n8nac workspace pin-instance --instance-id <id>`. See [n8nac docs](https://www.npmjs.com/package/n8nac).
 
 ## Tool Boundaries
 
@@ -59,7 +61,7 @@ Signals NOT auto-triggered (informational only): `check-inventory-freshness.sh` 
 - Executions: `npx n8nac execution list/get`
 
 ### Operations (all via n8nac CLI)
-- Health check: `bash "$(claude plugin path n8n-autopilot)/scripts/setup-check.sh"`
+- Health check: `/n8n-autopilot:check-mcps` (or runs auto via SessionStart hook)
 - List/search workflows: `npx n8nac list` / `npx n8nac find <query>` — **default excludes archived**; use `--include-archived` for all, `--only-archived` for archive-only; `--json --search --sort --limit --local --remote` for scripted/agent use
 - **Archived workflows are read-only** — `push` is rejected. No code-fix-loop; unarchive in n8n UI or create new.
 - Get workflow details: `npx n8nac pull <workflowId>`

@@ -1,5 +1,7 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "n8n-autopilot",
+  "description": "Claude Code plugin that turns natural-language prompts into validated, deployed n8n workflows via the n8nac CLI.",
   "owner": {
     "name": "Neurawork",
     "email": "maximilian.koenig@neurawork.ai"
@@ -8,10 +10,10 @@
     {
       "name": "n8n-autopilot",
       "source": "./",
-      "description": "Build, validate, and deploy n8n workflows from Claude Code. Requires Node.js 18+ and n8nac CLI ≥ 2.2.0 (auto-installed via npx). Ships init-repo, build-workflow, deploy, pull-schemas, sync-credentials, inventory, data-tables and curated knowledge skills, plus SessionStart hooks for staleness detection with auto-reactions.",
-      "version": "3.6.1",
+      "description": "Build, validate, and deploy n8n workflows from Claude Code. CLI-only (n8nac reference 2.2.1, minimum 2.2.0; auto-installed via npx). Requires Node.js 18+ and the companion plugin `n8n-as-code@n8nac-marketplace` (Etienne Lescot) for the `n8n-architect` skill. Ships init-repo, build-workflow pipeline, deploy, pull-schemas (CLI + npm-extraction fallback), sync-credentials with --fix-workflows, inventory, data-tables, plus SessionStart hooks for staleness detection with auto-reactions and a workspace-migration diagnostic.",
+      "version": "4.1.0",
       "category": "productivity",
-      "homepage": "https://github.com/nashtrader/n8n-autopilot"
+      "homepage": "https://github.com/neurawork-git/n8n-autopilot"
     }
   ]
 }

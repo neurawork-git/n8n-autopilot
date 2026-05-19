@@ -6,9 +6,11 @@ dist/
 # Secrets — never commit
 .env
 .env.local
-.mcp.json
 
-# n8nac — runtime config (regenerate via `npx n8nac init`)
+# n8nac >= 2.2 stores workspace/instance config in user home
+# (~/n8nac-config.json + ~/.n8n-manager/), NOT in the repo. Nothing to ignore
+# locally for config. Legacy in-repo n8nac-config.json (from n8nac < 2.2) is
+# kept gitignored here for safety during the workspace migrate-v1 transition.
 n8nac-config.json
 n8nac-instance.json
 

@@ -14,7 +14,9 @@
 QUIET=0
 [[ "$1" == "--quiet" ]] && QUIET=1
 
-REPO_DIR="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+# Consumer-repo path: the user's CWD when the SessionStart hook fires.
+# CLAUDE_PLUGIN_ROOT points at the *plugin install* dir, not the workspace.
+REPO_DIR="$PWD"
 WORKFLOWS_DIR="$REPO_DIR/workflows"
 
 if [ ! -d "$WORKFLOWS_DIR" ]; then
@@ -43,7 +45,7 @@ let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{
 });" 2>/dev/null)
 
 if [ -z "$LIVE_IDS" ]; then
-  [ "$QUIET" -eq 0 ] && echo "ℹ️  check-credential-freshness: skipping (n8nac credential list unavailable — run 'npx n8nac init')."
+  [ "$QUIET" -eq 0 ] && echo "ℹ️  check-credential-freshness: skipping (n8nac credential list unavailable — run 'npx n8nac setup --mode connect-existing')."
   exit 0
 fi
 

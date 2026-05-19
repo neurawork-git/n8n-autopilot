@@ -1,30 +1,41 @@
 ---
 name: build-workflow
-description: Full 3-phase pipeline (Research → Write+Validate → Deploy+Test) — research, write+validate, deploy+test a workflow on n8n. Use when the user wants an end-to-end workflow that is deployed and verified on the n8n instance.
+description: Full 3-phase pipeline (Research → Write+Validate → Deploy+Test) for shipping an n8n workflow end-to-end. Wraps Etienne's `n8n-as-code:n8n-architect` skill for schema research + authoring, adds repo-scoped orchestration: community-template lookup, validate-push-test loop, mcpTrigger publish gate, execution inspection, Completion Report.
 argument-hint: '"Description of what the workflow should do"'
 user-invocable: true
-allowed-tools: Read, Write, Edit, Grep, Glob, Bash(npx:*), Bash(grep:*), Bash(node:*), Bash(npm:*), Bash(find:*), Bash(cat:*), Bash(jq:*), Bash(mkdir:*), Agent, mcp__n8n-as-code__*
+allowed-tools: Read, Write, Edit, Grep, Glob, Bash(npx:*), Bash(grep:*), Bash(node:*), Bash(npm:*), Bash(find:*), Bash(cat:*), Bash(jq:*), Bash(mkdir:*)
 ---
 
 # Build Workflow (Full Pipeline)
 
-Create a workflow from description to **verified live execution on n8n**. All phases are mandatory. The skill is only complete when the workflow has been tested and a completion report is delivered.
+Take a natural-language description and ship it as a **verified live execution on n8n**. All three phases are mandatory. The skill is only complete after a successful execution has been inspected and reported.
 
-## Tools
+> **Companion plugin required.** This skill leans on `n8n-as-code:n8n-architect` (from the `n8nac-marketplace` plugin by Etienne Lescot) for schema research, authoring rules, and n8n best practices — installing `n8n-autopilot` without the companion plugin will work but you will miss the shared knowledge base. Install both:
+>
+> ```bash
+> claude plugin marketplace add EtienneLescot/n8n-as-code
+> claude plugin install n8n-as-code@n8nac-marketplace
+> ```
 
-This skill uses **n8nac only** (CLI + `n8n-as-code` MCP):
+## Tools — all CLI
 
-| Tool | Role |
-|------|------|
-| `mcp__n8n-as-code__search_n8n_knowledge`, `get_n8n_node_info`, `validate_n8n_workflow` | Node discovery, parameter lookup, JSON validation |
-| `npx n8nac skills node-info <name> --json` / `skills node-schema --json` | Exact TypeScript defs from local schemas/ cache |
+n8n-autopilot is CLI-only (`npx n8nac …`). There is no `mcp__n8n-as-code__*` namespace in any working setup — the npm `n8nac mcp` entry-point is broken upstream and Etienne's plugin ships skill knowledge, not an MCP server. Use the table below.
+
+| Command | Role |
+|---------|------|
+| `npx n8nac skills examples search "<q>"` / `info <id>` / `download <id>` | Community-template lookup (7000+ from n8nworkflows.xyz) — **always Step 0** |
+| `npx n8nac skills search "<q>"` / `node-info <name> --json` / `node-schema <name> --json` | Node discovery + exact TypeScript defs from local schemas |
+| `npx n8nac skills related "<q>"` / `guides "<q>"` | Alternative nodes + tutorials |
 | `npx n8nac skills validate <file> --strict --json` | Local workflow validation |
-| `npx n8nac push <file> --verify` | Deploy + remote-state verification |
-| `npx n8nac test <id> --data '...'` | HTTP-trigger test (webhook/chat/form) |
+| `npx n8nac push <file> --verify` | Deploy + remote-state verification in one call |
+| `npx n8nac test-plan <id> --json` | Infer triggerType + suggestedPayload before testing |
+| `npx n8nac test <id> --data '...'` | HTTP-trigger live test (webhook/chat/form) |
 | `npx n8nac execution get <execId> --include-data` | Inspect execution output |
-| `npx n8nac find <query> --json --remote` | Search existing workflows |
+| `npx n8nac find <q> --json --remote` | Search existing remote workflows |
+| `npx n8nac workflow present <id> --json` | Resolve the user-facing n8n URL — never string-concat `<host>/workflow/<id>` |
+| `npx n8nac workflow credential-required <id>` | Check credential readiness (exit 0 = all present, exit 1 = missing) |
 
-**Limits:** n8nac cannot trigger schedule/manual/errorTrigger workflows (user must run "Execute Workflow" in n8n UI), and cannot publish drafts (mcpTrigger workflows need manual UI publish).
+**Limits:** `n8nac test` cannot fire schedule/manual/errorTrigger workflows (user runs "Execute Workflow" in the n8n UI). n8nac cannot publish drafts (mcpTrigger workflows need manual UI publish).
 
 ## Input
 
@@ -41,49 +52,54 @@ If `$ARGUMENTS` is empty, ask the user before proceeding.
 
 ### Phase 0 — Research
 
-**Goal:** Know exact node types, parameter names, and SDK patterns before writing code.
+**Goal:** Know exact node types, parameter names, and SDK patterns before writing code. Delegate schema-research details to the companion `n8n-architect` skill — it owns Schema-First Research, Workflow Authoring Rules, AI/LangChain rules, Common Mistakes.
 
-**Step 1 — n8nac node discovery** (launch `n8n-researcher` agent, haiku):
-- `search_n8n_knowledge` for each service involved
-- `get_n8n_node_info` for each node type → exact parameters + credential keys
+**Step 0 — Community-template lookup (MANDATORY before any node-by-node work):**
+```bash
+npx n8nac skills examples search "<2-3 keywords from the description>" --json
+```
+Inspect top hits with `npx n8nac skills examples info <id>`. If a template matches the requested workflow by ≥70 % (same trigger family + same target service + comparable transformations), download it as the starting point:
+```bash
+npx n8nac skills examples download <id>
+```
+Then jump to Phase 1 step 1 with the downloaded file as the seed and only run Steps 1–2 below for nodes you add or change. Adapting an existing template is cheaper, less hallucination-prone, and lands on a community-proven pattern.
 
-**Step 2 — Exact TypeScript defs + SDK patterns:**
-- `npx n8nac skills node-info <node-name> --json` for each node from Step 1 → exact parameters, credential keys, version
-- Skills `n8n-workflow-patterns`, `n8n-expression-syntax`, `n8n-node-configuration` for SDK coding rules and expression syntax
-- `npx n8nac skills guides "<query>"` for relevant tutorials
-- `npx n8nac skills related "<query>"` — use when the workflow involves AI agents, memory, or vector stores (pattern recommendations)
+**Step 1 — Node discovery (CLI-only):**
+```bash
+npx n8nac skills search "<service>" --json     # find candidate nodes
+npx n8nac skills node-info <type> --json       # exact parameters, credential keys, typeVersion
+npx n8nac skills related "<service>" --json    # alternatives + nearest docs
+```
+For AI agents/memory/vector stores also check `npx n8nac skills guides "<topic>"`.
 
-**Step 3 — Check existing workflows (optional):**
-- `npx n8nac find <query> --json --remote` to find similar existing workflows as reference patterns
+**Step 2 — Code-Node specifics (only if the workflow uses Code nodes):**
+- Skill `n8n-code-javascript` covers `$input` / `$json` / `$node` / `$helpers.httpRequest()` / DateTime (Luxon) / top mistakes
+- Skill `n8n-code-python` covers `_input` / `_json` / standard library only
 
-**Gate:** Do not proceed to Phase 1 without verified parameter names for every node.
+**Step 3 — Find similar existing workflows (optional):**
+```bash
+npx n8nac find <query> --json --remote
+```
 
-> **Missing schema?** If `get_n8n_node_info` returns empty or not-found for a community node:
+**Gate:** Do not proceed to Phase 1 without verified parameter names for every node. **Never guess** — wrong keys are silently ignored by n8n at runtime.
+
+> **Missing schema?** If `npx n8nac skills node-info <type>` returns empty or not-found for a community node:
 > 1. Look up the npm package name in `docs/COMMUNITY_NODES.md` (Package column)
-> 2. Run Stage 3 extraction immediately (see `pull-schemas` skill) for that package
+> 2. Run Stage 3 extraction immediately (see `/n8n-autopilot:pull-schemas` skill) for that package
 > 3. Rebuild `schemas/_index.json`
-> 4. Then re-run `get_n8n_node_info` — or read the cached schema directly from `schemas/nodes/`
+> 4. Then re-run `skills node-info` — or read the cached schema directly from `schemas/nodes/`
 >
-> Do **not** guess parameter names. A missing schema is always recoverable via Stage 3.
+> A missing schema is always recoverable via Stage 3.
 
 ### Phase 1 — Write + Validate
 
-1. Pull closest existing workflow as starting point (optional):
+1. Pull the closest existing workflow as starting point (optional, only if Step 0 / Step 3 surfaced a useful one):
    ```bash
    npx n8nac pull <workflowId>
    ```
    Or create a new `.workflow.ts` file from scratch in Decorator-TS format.
 
-2. Write `workflows/<name>.workflow.ts` using Decorator-TS format:
-   - `@workflow({...})` decorator with name and settings
-   - Each node as a class method with `@node({...})` or `@trigger({...})`
-   - `@links()` method for connections
-   - Sticky note node documenting purpose + required credentials
-   - Use `={{ $json.fieldName }}` for n8n runtime expressions
-   - Use verified parameter names from Phase 0
-   - ResourceLocator parameters use `{ __rl: true, value: "...", mode: "list" }`
-
-   **Naming + documentation conventions:**
+2. Write `workflows/<name>.workflow.ts` using Decorator-TS format. The companion `n8n-architect` skill documents the full authoring rules — these conventions are repo-specific additions on top:
    - Workflow names: `[Trigger] Action - Target` (e.g. `[Webhook] Create Lead - Close CRM`)
    - Node names: Verb + Object (e.g. `Validate Input`, `Fetch Users`, `Send Alert`)
    - File: `<workflow-name>.workflow.ts` in `workflows/` (e.g. `workflows/create-lead.workflow.ts`)
@@ -113,27 +129,19 @@ If `$ARGUMENTS` is empty, ask the user before proceeding.
    > The PreToolUse hook (`ensure-mcp-trigger-setting.sh`) auto-fixes `false → true` and warns
    > when the field is missing entirely, but setting it explicitly here is the canonical source of truth.
 
-3. Launch `workflow-reviewer` agent (sonnet) to review the `.workflow.ts`
-
-4. Local validation:
+3. Validate locally — single source of truth:
    ```bash
-   npx n8nac skills validate --strict --json workflows/<name>.workflow.ts
+   npx n8nac skills validate workflows/<name>.workflow.ts --strict --json
    ```
+   Fix any errors → re-validate. Do not push with errors.
 
-5. Instance validation (dual-check) via n8n-as-code MCP:
-   ```
-   mcp__n8n-as-code__validate_n8n_workflow(code: <workflow TS content>)
-   ```
-   Compare results from both. Instance validation catches issues the offline validator may miss (e.g. credential type mismatches, node version constraints on the live instance).
-
-6. Push + verify:
+4. Push + verify in one call:
    ```bash
    npx n8nac push workflows/<name>.workflow.ts --verify
    ```
-   `--verify` fetches the workflow from n8n after push and validates it against the local schema.
-   On mismatch: re-push. On success: proceed to Phase 2.
+   `--verify` fetches the workflow from n8n after push and validates it against the local schema. On mismatch: re-push. On success: proceed to Phase 2.
 
-**Gate:** Both validations pass + push succeeds + verify passes. Fix and retry if needed.
+**Gate:** Local validation passes + push succeeds + verify passes. Fix and retry if needed.
 
 ### Phase 2 — Execute + Test (MANDATORY)
 
@@ -160,7 +168,7 @@ If `$ARGUMENTS` is empty, ask the user before proceeding.
 
 #### Path A — HTTP-testable triggers (webhook, chat, form)
 
-**n8nac test** calls the test URL (`/webhook-test/`) — no activation needed.
+`n8nac test` calls the test URL (`/webhook-test/`) — no activation needed.
 
 1. Check credential presence:
    ```bash
@@ -179,8 +187,8 @@ If `$ARGUMENTS` is empty, ask the user before proceeding.
    ```
    If the user provided specific test data in `$ARGUMENTS`, use that instead.
 
-3. On Class A error (exit 0): inform user about missing credentials/model — do not block
-4. On Class B error (exit 1): fix workflow → re-validate → re-push (`--verify`) → re-test (max 3 cycles)
+3. On Class A error (exit 0): inform user about missing credentials/model — do not block.
+4. On Class B error (exit 1): fix workflow → re-validate → re-push (`--verify`) → re-test (max 3 cycles).
 
 5. Inspect execution results:
    ```bash
@@ -194,26 +202,31 @@ If `$ARGUMENTS` is empty, ask the user before proceeding.
 
 #### Path B — Non-HTTP triggers (schedule, manual, errorTrigger, telegram)
 
-**n8nac cannot trigger these — manual test required.** Stop the auto-pipeline here and prompt the user:
+`n8nac` cannot trigger these — manual test required. Stop the auto-pipeline here and prompt the user:
 
-1. Check credential presence (same as Path A step 1)
+1. Check credential presence (same as Path A step 1).
 
-2. Display to user (prominent):
+2. Resolve the user-facing URL via the CLI (do not string-concat):
+   ```bash
+   npx n8nac workflow present <workflowId> --json
+   ```
+
+3. Display to user (prominent), using the URL from step 2:
    ```
    ⚠️  MANUAL TEST REQUIRED — non-HTTP trigger
 
-   Open n8n UI:  <n8n_host>/workflow/<workflowId>
+   Open n8n UI:  <url from workflow present>
    Click:        "Execute Workflow" button (top right)
    Then report back: execution-id (visible in the executions panel)
    ```
 
-3. Once the user reports an execution-id, inspect results:
+4. Once the user reports an execution-id, inspect results:
    ```bash
    npx n8nac execution get <executionId> --include-data
    ```
    Check `status`, node outputs, error messages.
 
-4. On error: fix workflow → re-validate → re-push (`--verify`) → ask user to re-execute in UI (max 3 cycles)
+5. On error: fix workflow → re-validate → re-push (`--verify`) → ask user to re-execute in UI (max 3 cycles).
 
 #### Path C — Activate for production (optional)
 
@@ -226,14 +239,17 @@ Note: `activate` is NOT the same as `publish` for the new Two-Phase model — se
 
 #### Path D — Manual Publish required (when `HAS_MCP_TRIGGER=true`)
 
-n8nac cannot publish drafts. After a successful push of an `mcpTrigger` workflow, display to user (prominent):
+n8nac cannot publish drafts. After a successful push of an `mcpTrigger` workflow:
+
+1. Resolve URL: `npx n8nac workflow present <workflowId> --json`
+2. Display to user (prominent), using that URL:
 
 ```
 ⚠️  MANUAL PUBLISH REQUIRED — mcpTrigger detected
 
 The MCP endpoint will return 404 until the workflow is published.
 
-Open n8n UI:  <n8n_host>/workflow/<workflowId>
+Open n8n UI:  <url from workflow present>
 Click:        "Publish" button
 Confirm in the Completion Report once done.
 ```
@@ -249,6 +265,7 @@ Confirm in the Completion Report once done.
 
 **Name:** [Workflow Name]
 **ID:** [n8n workflow ID]
+**URL:** [from `npx n8nac workflow present <id> --json`]
 **Location:** workflows/<name>.workflow.ts
 **trigger_type:** [webhook | schedule | manual | mcpTrigger | ...]
 **test_path_used:** [Path A (auto) / Path B (manual UI) / Path D-extended]
@@ -271,11 +288,10 @@ Confirm in the Completion Report once done.
 
 | Phase | Error | Action |
 |-------|-------|--------|
-| 0 | n8nac MCP unavailable | Fall back to CLI: `npx n8nac skills node-info <name> --json` and `skills search` for discovery |
-| 0 | Community node not in n8nac | Run Stage 3 (npm extraction) → rebuild index → read from `schemas/nodes/` |
+| 0 | `npx n8nac skills node-info` returns empty for a community node | Run Stage 3 (npm extraction, see `/n8n-autopilot:pull-schemas`) → rebuild index → read from `schemas/nodes/` |
+| 0 | Schema-research stuck on parameter ambiguity | Defer to `n8n-as-code:n8n-architect` skill — it has authoritative rules for resource/operation discriminators |
 | 1 | Local validation fails | Fix code → re-validate |
-| 1 | Instance validation reports new error | Fix code → re-validate both → re-push |
-| 1 | Push fails (conflict) | `n8nac list` → `n8nac resolve` → retry |
+| 1 | Push fails (conflict) | `npx n8nac list` → `npx n8nac resolve <id>` → retry |
 | 1 | Push fails (archived) | Workflow is archived → read-only. Do not iterate — inform user: unarchive in n8n UI or create a new workflow |
 | 1 | Verify fails (remote mismatch) | Re-push → re-verify |
 | 2A | Class A error (exit 0) | Report missing credentials to user — do not iterate |

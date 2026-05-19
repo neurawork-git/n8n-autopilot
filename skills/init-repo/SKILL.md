@@ -1,6 +1,6 @@
 ---
 name: init-repo
-description: Bootstrap a new n8n workflow repo from scratch. Scaffolds directory structure, writes plugin-compatible CLAUDE.md/README/.gitignore/.mcp.json/.env.example, runs `n8nac init`, pulls node schemas, and verifies setup. Use when starting a new customer/project n8n repo.
+description: Bootstrap a new n8n workflow repo from scratch. Scaffolds directory structure, writes plugin-compatible CLAUDE.md/README/.gitignore/.env.example, runs the n8nac >= 2.2 setup flow (`setup --mode connect-existing` + `workspace pin-instance` + `set-sync-folder`), pulls node schemas, and verifies setup. Use when starting a new customer/project n8n repo.
 argument-hint: "[target-dir] [--here] [--force] [--skip-schemas]"
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash(bash:*), Bash(npx:*), Bash(git:*), Bash(cp:*), Bash(test:*), Bash(mkdir:*), Bash(ls:*)
@@ -10,7 +10,9 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash(bash:*), Bash(npx:*), Bash(gi
 
 Bootstrap a brand-new n8n workflow repo so the user can immediately start with `/n8n-autopilot:build-workflow`.
 
-This skill is the **single entrypoint** for new-repo setup. Replaces the manual 6-step CLAUDE.md checklist.
+This skill is the **single entrypoint** for new-repo setup. Replaces the manual checklist.
+
+> **Reference n8nac version: 2.2.1** (minimum 2.2.0). The setup flow below targets the v2 manager-backed storage model: workspace/instance config lives in user home (`~/n8nac-config.json` + `~/.n8n-manager/`), not in the workspace root. Legacy in-repo `n8nac-config.json` is migrated via `n8nac workspace migrate-v1`.
 
 ## Arguments
 
@@ -23,73 +25,86 @@ This skill is the **single entrypoint** for new-repo setup. Replaces the manual 
 
 ## Pre-flight
 
-Before doing anything:
-
 1. **Detect plugin self-bootstrap.** Refuse if target dir contains `.claude-plugin/plugin.json` with `"name": "n8n-autopilot"` — that's the plugin source, not a consumer repo.
-2. **Detect already-bootstrapped.** If `n8nac-config.json` already exists in target → abort with clear message ("delete it manually to re-init").
-3. **Check tools.** `npx --version` and `git --version` must work. Fail loud if missing.
+2. **Check tools.** `npx --version` and `git --version` must work. Fail loud if missing.
+3. **Detect legacy v1/v2 config.** If `<target>/n8nac-config.json` exists (legacy workspace-local config from n8nac < 2.2), warn the user and suggest `npx n8nac workspace migrate-v1 --write` BEFORE rerunning this skill. Do not delete the file.
 
 ## Steps
 
 ### 1. Scaffold files
 
-Run the deterministic scaffold script:
-
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/skills/init-repo/scripts/init-repo.sh" "<target-dir>" [--force] [--no-git]
 ```
 
-This creates `workflows/`, `schemas/nodes/`, `data/`, `docs/` and writes templated `CLAUDE.md`, `README.md`, `.gitignore`, `.mcp.json`, `.env.example`, `n8nac-config.json.example`, runs `git init`.
+Creates `workflows/`, `schemas/nodes/`, `data/`, `docs/` and writes templated `CLAUDE.md`, `README.md`, `.gitignore`, `.env.example`, runs `git init`. Idempotent. No `.mcp.json` is scaffolded — n8n-autopilot 4.x is CLI-only.
 
 **Output to user:** Summarize what was written / skipped.
 
 ### 2. Collect connection info
 
-Ask the user — one prompt, three answers — for:
+Ask the user — one prompt, two answers — for:
 
 - **n8n host URL** (e.g. `https://n8n.customer.example.com`)
 - **n8n API key** (from n8n UI → Settings → API)
-- **Project name** in n8n (optional — if blank, n8nac defaults to Personal)
 
-Do NOT write these to a committed file. Plan:
-- Host + API key → `.env` and `n8nac-config.json` (gitignored)
-- Project ID picked interactively via `npx n8nac init-project`
+Project assignment is decided in step 5 once `setup` has surfaced available projects.
 
-If user can't provide right now: skip steps 3–5, print remaining manual commands, and stop. Don't fail.
+If user can't provide right now: skip steps 3–6, print the remaining manual commands (see `init-repo.sh` "Next steps" tail), and stop. Don't fail.
 
 ### 3. Write `.env`
 
 In the target dir, copy `.env.example` → `.env` and substitute `N8N_API_URL` and `N8N_API_KEY` with what the user gave.
 
-```bash
-cd <target-dir>
-cp .env.example .env
-# then Edit tool: replace N8N_API_URL=... and N8N_API_KEY= line
-```
-
 Use the Edit tool, NOT `sed -i` — Windows safety.
 
-### 4. Init n8nac
+### 4. Run n8nac setup (v2.2 flow)
 
 ```bash
 cd <target-dir>
-npx --yes n8nac init-auth --yes --host "<host>" --api-key "<key>"
-npx --yes n8nac init-project --yes
+# Pipe the API key on stdin — never echo it to the shell history
+printf "%s" "<api-key>" | npx --yes n8nac setup \
+  --mode connect-existing \
+  --host "<host>" \
+  --api-key-stdin \
+  --json
 ```
 
-If `init-project` fails with multiple-project ambiguity, fall back to interactive:
+The `--json` output contains the newly-registered `instanceId`. Parse and capture it.
+
+If `setup` reports an existing instance for this URL, that's fine — re-use the returned `instanceId`.
+
+### 5. Pin workspace + sync folder + project
 
 ```bash
-npx n8nac init-project
+# Bind THIS workspace to the instance returned by setup
+npx n8nac workspace pin-instance --instance-id "<instanceId from step 4>"
+
+# Tell n8nac where to read/write *.workflow.ts in this repo
+npx n8nac workspace set-sync-folder workflows
+
+# Optional: lock workspace to a non-default project
+npx n8nac workspace set-project --project-name Personal      # default
+# or
+npx n8nac workspace set-project --project-id <id>            # specific project
 ```
 
-and let the user pick. Verify success:
+If the user's n8n has multiple projects and the user did not specify, list them first and let them pick:
 
 ```bash
-test -f n8nac-config.json && echo OK || echo MISSING
+npx n8nac credentials inventory --json     # surfaces project context
+# or inspect: npx n8nac workspace status --json
 ```
 
-### 5. Pull schemas
+Verify the workspace is bound:
+
+```bash
+npx n8nac workspace status --json
+```
+
+Status `ready` / `active` / `ok` = good. Status `dry-run` / `migration-required` = run `npx n8nac workspace migrate --write` and re-check.
+
+### 6. Pull schemas
 
 Unless `--skip-schemas`:
 
@@ -97,7 +112,7 @@ Unless `--skip-schemas`:
 
 Schemas land in `schemas/nodes/`, index in `schemas/_index.json`. Both gitignored.
 
-### 6. Verify
+### 7. Verify
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-check.sh"
@@ -105,7 +120,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-check.sh"
 
 Expect "All checks passed". If errors → diagnose and report, don't silently swallow.
 
-### 7. Final message
+### 8. Final message
 
 Print to the user:
 
@@ -127,7 +142,8 @@ First commit:
 ## Failure handling
 
 - **Tool missing (npx/git)**: stop, tell user how to install, don't continue.
-- **n8nac init fails**: print exact stderr, leave repo half-bootstrapped, tell user what to fix and how to rerun (just the failing step, not the whole skill).
+- **`npx n8nac setup` fails**: print exact stderr, leave repo half-bootstrapped, tell user what to fix and how to rerun (just the failing step, not the whole skill).
+- **`workspace pin-instance` fails**: most likely cause is missing `instanceId` — re-run step 4 with `--json` and capture stdout.
 - **pull-schemas fails**: continue anyway — schemas are nice-to-have, user can run `/n8n-autopilot:pull-schemas` later.
 - **setup-check fails**: report errors, do NOT delete anything, give user the rerun command.
 
@@ -136,6 +152,7 @@ Never delete files the user might have written between steps.
 ## Notes
 
 - Skill is idempotent at the file-scaffold level (Step 1) — never overwrites existing files.
-- Steps 3–6 will re-run cleanly on a partially bootstrapped repo.
-- Templates live in `${CLAUDE_PLUGIN_ROOT}/skills/init-repo/assets/templates/` (colocated with the skill per skill-creator convention). If user wants to customize them per-customer, they can fork the plugin or override post-init.
-- For multi-environment setups (one repo, many n8n tenants), run `npx n8nac env add <name>` per environment after this skill, then `npx n8nac env use <name>` to switch.
+- Steps 3–7 will re-run cleanly on a partially bootstrapped repo.
+- Templates live in `${CLAUDE_PLUGIN_ROOT}/skills/init-repo/assets/templates/` (colocated with the skill per skill-creator convention).
+- For multi-environment setups (one repo, many n8n tenants), use `npx n8nac env add <name>` per environment after this skill, then `npx n8nac env use <name>` to switch.
+- The legacy `init` / `init-auth` / `init-project` commands were removed in n8nac 2.2 — do NOT use them.

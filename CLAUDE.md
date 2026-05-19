@@ -3,19 +3,38 @@
 This repo uses the **n8n-autopilot plugin** for Claude Code.
 Workflows are TypeScript (Decorator format). Never write n8n JSON by hand.
 
-> **You are in the INTERNAL repo (`nashtrader/n8n-autopilot-internal`).** The matching public repo is `nashtrader/n8n-autopilot` at `~/Documents/Repositories/n8n-autopilot-public/`. When the user asks to release / publish / ship to public, follow [`RELEASE_PROCESS.md`](RELEASE_PROCESS.md) — it is the authoritative manual procedure for syncing internal → public.
+> **You are in the INTERNAL repo (`neurawork-git/n8n-autopilot-internal`).** The matching public repo is `neurawork-git/n8n-autopilot` at `~/Documents/Repositories/n8n-autopilot-public/`. When the user asks to release / publish / ship to public, follow [`RELEASE_PROCESS.md`](RELEASE_PROCESS.md) — it is the authoritative manual procedure for syncing internal → public.
+
+> **Reference n8nac version: 2.2.1** (minimum 2.2.0). All setup, workspace, and credential flows below target the v2 manager-backed storage model. Single source of truth: `REFERENCE_N8NAC_VERSION` constant in `scripts/setup-check.sh`. Bump procedure: update the constant, sync README badges + `plugin.json`, add CHANGELOG entry.
 
 ## Setup
 
 **Brand-new repo? One command:**
-→ `/n8n-autopilot:init-repo [target-dir]` — scaffolds dir layout + CLAUDE.md/README/.gitignore/.mcp.json/.env.example, runs `n8nac init`, pulls schemas, verifies.
+→ `/n8n-autopilot:init-repo [target-dir]` — scaffolds dir layout + CLAUDE.md/README/.gitignore/.mcp.json/.env.example, runs the v2.2 setup flow (`setup --mode connect-existing` + `workspace pin-instance` + `set-sync-folder`), pulls schemas, verifies.
 
 **Manual (if you prefer step-by-step):**
-1. Install plugin: `claude plugin marketplace add nashtrader/n8n-autopilot && claude plugin install n8n-autopilot@n8n-autopilot`
-2. Copy MCP config: `cp "$(claude plugin path n8n-autopilot)/.mcp.json.example" .mcp.json`
-3. `npx n8nac init` (non-interactive: `npx n8nac init-auth --yes && npx n8nac init-project --yes`) — writes `n8nac-config.json` (gitignored)
-4. `/n8n-autopilot:pull-schemas` — populate `schemas/nodes/` (gitignored, instance-specific)
-5. Verify: `bash scripts/setup-check.sh`
+1. Install both plugins (n8n-autopilot + Etienne's companion):
+   ```bash
+   claude plugin marketplace add neurawork-git/n8n-autopilot
+   claude plugin install n8n-autopilot@n8n-autopilot
+
+   claude plugin marketplace add EtienneLescot/n8n-as-code
+   claude plugin install n8n-as-code@n8nac-marketplace
+   ```
+   The companion plugin (Etienne) provides the `n8n-architect` skill that owns schema-research, authoring rules, AI/LangChain rules, etc. n8n-autopilot does workflow lifecycle orchestration (init-repo, build-workflow pipeline, deploy, sync-credentials, inventory, data-tables).
+2. Bind workspace to n8n instance (n8nac >= 2.2 stores config in user home, NOT the repo):
+   ```bash
+   printf "%s" "$N8N_API_KEY" | npx n8nac setup --mode connect-existing \
+     --host "$N8N_API_URL" --api-key-stdin --json
+   npx n8nac workspace pin-instance --instance-id <id-from-setup-output>
+   npx n8nac workspace set-sync-folder workflows
+   # Optional, for multi-project instances:
+   npx n8nac workspace set-project --project-name Personal
+   ```
+3. `/n8n-autopilot:pull-schemas` — populate `schemas/nodes/` (gitignored, instance-specific)
+4. Verify: `/n8n-autopilot:check-mcps` (or runs auto via SessionStart hook; expects workspace status `bound`)
+
+**Migrating from n8nac < 2.2?** Legacy `./n8nac-config.json` is migrated via `npx n8nac workspace migrate-v1 --write`. The plugin does not delete the legacy file; `init-repo` warns and stops.
 
 ## Auto-Reactions on SessionStart
 
@@ -29,7 +48,9 @@ SessionStart hooks emit `AUTOPILOT_ACTION_REQUIRED: <slash-command>` lines when 
 
 Hard rule: parse the literal slash-command after `AUTOPILOT_ACTION_REQUIRED:` and execute it. Do not paraphrase, do not skip the `--packages` list, do not bundle multiple signals into one call — run each line as written.
 
-Signals NOT auto-triggered (informational only): `check-inventory-freshness.sh` (`INFO:` prefix — surface to user, do not auto-regenerate; inventory regeneration is expensive).
+Signals NOT auto-triggered (informational only):
+- `check-inventory-freshness.sh` (`INFO:` prefix — surface to user, do not auto-regenerate; inventory regeneration is expensive).
+- `check-workspace-migration.sh` — flags legacy in-repo `./n8nac-config.json` (suggests `npx n8nac workspace migrate-v1 --write`) and `workspace status: dry-run` / `migration-required` (suggests `npx n8nac workspace migrate --write`). Migrations move files on the user's filesystem — surface the block to the user verbatim, do NOT auto-run.
 
 ## Entry Point
 
@@ -52,7 +73,9 @@ When the user asks to create, build, or scaffold a workflow:
 - Activate: `npx n8nac workflow activate <id>`
 - Deactivate: `npx n8nac workflow deactivate <id>`
 - Credentials: `npx n8nac credential list/get/create/delete/schema <type>`
+- Credential recipes (n8nac >= 2.2): `npx n8nac credentials recipes/inventory/starter-kits --json` — shared catalogue (openai-native, slack-oauth, postgres, …); `npx n8nac credentials ensure <recipeId>` creates from recipe; `npx n8nac credentials test <id-or-recipeId>` verifies live
 - Executions: `npx n8nac execution list/get`
+- Workflow URL resolution: `npx n8nac workflow present <id> --json` — never string-concat `<host>/workflow/<id>`
 
 ### Operations (all via n8nac CLI)
 - Health check: `bash scripts/setup-check.sh`
@@ -72,7 +95,8 @@ When the user asks to create, build, or scaffold a workflow:
 - AI-Kontext: `npx n8nac update-ai` — AGENTS.md + AI-Kontext regenerieren
 - Multi-Environment: `npx n8nac env list/add/update/pin/remove` — Environment-Management (mehrere n8n-Instanzen pro Repo)
 - Aktives Environment wechseln: `npx n8nac env use <name>` (alias: `env pin <name>`)
-- Workspace ↔ Instanz-Binding: `npx n8nac workspace pin-instance` / `clear-instance` / `status`
+- Workspace ↔ Instanz-Binding: `npx n8nac workspace pin-instance` / `clear-instance` / `set-sync-folder` / `set-project` / `status` / `migrate` / `migrate-v1`
+- Setup (Erstkonfiguration): `npx n8nac setup --mode <managed-local|connect-existing|generation-only>` (Modus-Liste: `npx n8nac setup-modes`). `init` / `init-auth` / `init-project` aus n8nac < 2.2 sind **entfernt** — niemals verwenden.
 - Node-Referenz: `npx n8nac skills node-schema <name>` — schnelles TypeScript-Snippet (`--json` für strukturierten Agent-Output); `skills node-info <name> --json` — vollständige Node-Info; `skills related <query>` — verwandte Nodes; `skills guides` — Tutorials; `skills list --nodes/--docs/--guides` — Enumerierung
 - `@workflow` Decorator: optionales `description`-Feld (Round-trip-fähig, erscheint in n8n UI und `n8nac list`-Output)
 
@@ -84,9 +108,10 @@ Draft — die bisher publizierte Version bleibt stehen, der MCP-Endpoint kann ge
 neuen Draft veraltet sein.
 
 **Regel:** Nach jedem Push/Update eines Workflows mit `mcpTrigger`:
-1. n8n-UI öffnen: `<n8n_host>/workflow/<workflowId>`
-2. "Publish"-Button klicken
-3. User bestätigt Publish-Status im Completion Report
+1. URL via n8nac auflösen: `npx n8nac workflow present <workflowId> --json`
+2. n8n-UI öffnen unter der URL aus dem Output
+3. "Publish"-Button klicken
+4. User bestätigt Publish-Status im Completion Report
 
 n8nac kann nicht publishen. `deploy` skill und Phase 2 (Path D) der `build-workflow` pipeline
 zeigen einen prominenten Hinweis statt automatischem Re-Publish.
@@ -95,10 +120,11 @@ zeigen einen prominenten Hinweis statt automatischem Re-Publish.
 
 `n8nac test` kann nur Webhook-/Chat-/Form-Trigger auslösen. Für `schedule`, `manual`, `errorTrigger`:
 
-1. n8n-UI öffnen: `<n8n_host>/workflow/<workflowId>`
-2. "Execute Workflow"-Button klicken
-3. User meldet `execution-id` an Claude
-4. Claude inspiziert via `npx n8nac execution get <id> --include-data`
+1. URL via n8nac auflösen: `npx n8nac workflow present <workflowId> --json`
+2. n8n-UI unter dieser URL öffnen
+3. "Execute Workflow"-Button klicken
+4. User meldet `execution-id` an Claude
+5. Claude inspiziert via `npx n8nac execution get <id> --include-data`
 
 Die `build-workflow` pipeline (Path B) stoppt automatisch und prompted den User entsprechend.
 

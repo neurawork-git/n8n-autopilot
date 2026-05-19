@@ -9,12 +9,15 @@
 #
 # Idempotent: refuses to overwrite existing files. Re-run safe.
 # Exits 0 on success, non-zero on error.
+#
+# n8nac >= 2.2 note: workspace/instance config lives in user home
+# (~/n8nac-config.json + ~/.n8n-manager/) and is NOT scaffolded by this script.
+# Run `npx n8nac setup --mode connect-existing --host <url> --api-key-stdin`
+# after this script finishes.
 
 set -euo pipefail
 
 # ── Resolve skill root ───────────────────────────────────────────────────────
-# Script lives at skills/init-repo/scripts/init-repo.sh.
-# Templates are colocated at skills/init-repo/assets/templates/.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILL_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEMPLATES_DIR="${SKILL_ROOT}/assets/templates"
@@ -33,7 +36,7 @@ for arg in "$@"; do
     --force) FORCE=1 ;;
     --no-git) NO_GIT=1 ;;
     -h|--help)
-      sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     --*) echo "ERROR: unknown flag $arg" >&2; exit 2 ;;
@@ -50,16 +53,11 @@ echo "Target: $TARGET_ABS"
 echo "Name:   $REPO_NAME"
 echo ""
 
-# ── Refuse if already bootstrapped ───────────────────────────────────────────
-if [ -f "$TARGET_ABS/n8nac-config.json" ]; then
-  echo "ERROR: $TARGET_ABS already has n8nac-config.json — already bootstrapped." >&2
-  echo "       Delete it manually if you really want to re-init." >&2
-  exit 1
-fi
-
 # ── Refuse non-empty dir unless --force ──────────────────────────────────────
+# (We no longer refuse on n8nac-config.json — in n8nac >= 2.2 that file lives
+# in user home, not the workspace. Workspace state is detected via
+# `npx n8nac workspace status` after scaffolding.)
 if [ "$FORCE" -eq 0 ]; then
-  # Count entries ignoring .git
   ENTRIES=$(find "$TARGET_ABS" -mindepth 1 -maxdepth 1 -not -name '.git' | wc -l)
   if [ "$ENTRIES" -gt 0 ]; then
     echo "ERROR: $TARGET_ABS is not empty. Pass --force to scaffold into existing dir (skips files that already exist)." >&2
@@ -107,9 +105,7 @@ echo "MKDIR  workflows/ schemas/nodes/ data/ docs/"
 render_template "$TARGET_ABS/CLAUDE.md"      "$TEMPLATES_DIR/CLAUDE.md"
 render_template "$TARGET_ABS/README.md"      "$TEMPLATES_DIR/README.md"
 write_file      "$TARGET_ABS/.gitignore"     "$TEMPLATES_DIR/gitignore"
-write_file      "$TARGET_ABS/.mcp.json"      "$TEMPLATES_DIR/mcp.json"
 write_file      "$TARGET_ABS/.env.example"   "$TEMPLATES_DIR/env.example"
-write_file      "$TARGET_ABS/n8nac-config.json.example" "$TEMPLATES_DIR/n8nac-config.json.example"
 
 # ── 3. git init ──────────────────────────────────────────────────────────────
 if [ "$NO_GIT" -eq 0 ]; then
@@ -124,11 +120,21 @@ fi
 echo ""
 echo "=== Scaffold complete ==="
 echo ""
-echo "Next steps:"
+echo "Next steps (n8nac >= 2.2 setup flow):"
 echo "  1. cd $TARGET_ABS"
 echo "  2. cp .env.example .env             # fill in N8N_API_URL + N8N_API_KEY"
-echo "  3. npx n8nac init                   # creates n8nac-config.json (interactive)"
-echo "     OR: npx n8nac init-auth --yes && npx n8nac init-project --yes"
-echo "  4. In Claude Code: /n8n-autopilot:pull-schemas"
-echo "  5. Verify: bash \"\$(claude plugin path n8n-autopilot)/scripts/setup-check.sh\""
+echo "  3. Bind workspace to n8n instance (API key via stdin — never in shell history):"
+echo "       printf '%s' \"\$N8N_API_KEY\" | npx n8nac setup --mode connect-existing \\"
+echo "         --host \"\$N8N_API_URL\" --api-key-stdin --json"
+echo "     (Or interactive: npx n8nac setup)"
+echo "  4. Pin instance + sync folder + (optional) project:"
+echo "       npx n8nac workspace pin-instance --instance-id <id-from-setup-output>"
+echo "       npx n8nac workspace set-sync-folder workflows"
+echo "       npx n8nac workspace set-project --project-name Personal  # if multi-project"
+echo "  5. In Claude Code: /n8n-autopilot:pull-schemas"
+echo "  6. Verify: open Claude Code in the new repo (SessionStart hook runs setup-check)"
+echo "     Or invoke explicitly: /n8n-autopilot:check-mcps"
+echo ""
+echo "Migrating from n8nac < 2.2 with a legacy ./n8nac-config.json?"
+echo "  Run: npx n8nac workspace migrate-v1 --write"
 echo ""
