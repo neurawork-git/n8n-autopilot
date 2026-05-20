@@ -2,6 +2,19 @@
 
 All notable changes to **n8n-autopilot** are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [4.2.1] — 2026-05-20
+
+### Fixed — SessionStart hook path resolution (consumer workspace, not plugin dir)
+
+Two SessionStart-hook scripts still resolved their working directory to `$CLAUDE_PLUGIN_ROOT` (the plugin install dir under `~/.claude/plugins/cache/…`) instead of `$PWD` (the consumer repo where Claude Code is actually running). v3.7.1 fixed this for `check-credential-freshness.sh` and `check-workspace-migration.sh` but missed two others; this patch closes the gap.
+
+- `scripts/check-schema-versions.sh` — now reads `schemas/_index.json` from the consumer workspace. Previously checked the plugin's own cache which never reflects the consumer's installed nodes.
+- `scripts/check-installed-nodes.sh` — now reads `schemas/_index.json` and `.env` from the consumer workspace. This explains the long-standing "ℹ️ check-installed-nodes: .env not found — skipping." that Falkensteg saw on every session despite having a populated `.env` in its repo root.
+
+Both files now follow the pattern documented in `check-credential-freshness.sh`: `REPO_DIR="$PWD"` with a comment block clarifying why `$CLAUDE_PLUGIN_ROOT` is the wrong primitive for workspace lookups.
+
+No skill changes, no manifest changes beyond the version bump.
+
 ## [4.2.0] — 2026-05-20
 
 ### Added — n8nac knowledge skills (full CLI reference + curated cheatsheet)

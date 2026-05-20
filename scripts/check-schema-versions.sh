@@ -12,7 +12,10 @@
 QUIET=0
 [[ "$1" == "--quiet" ]] && QUIET=1
 
-REPO_DIR="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+# Consumer-repo path: the user's CWD when the SessionStart hook fires.
+# CLAUDE_PLUGIN_ROOT points at the plugin install dir — schemas live in the
+# consumer's workspace, not the plugin cache. Bug fixed in 4.2.1.
+REPO_DIR="$PWD"
 INDEX="$REPO_DIR/schemas/_index.json"
 
 if [ ! -f "$INDEX" ]; then

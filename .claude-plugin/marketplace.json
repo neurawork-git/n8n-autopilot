@@ -11,7 +11,7 @@
       "name": "n8n-autopilot",
       "source": "./",
       "description": "Build, validate, and deploy n8n workflows from Claude Code. CLI-only (n8nac reference 2.2.1, minimum 2.2.0; auto-installed via npx). Requires Node.js 18+ and the companion plugin `n8n-as-code@n8nac-marketplace` (Etienne Lescot) for the `n8n-architect` skill. Ships init-repo, build-workflow pipeline, deploy, pull-schemas (CLI + npm-extraction fallback), sync-credentials with --fix-workflows, inventory, data-tables, plus SessionStart hooks for staleness detection with auto-reactions and a workspace-migration diagnostic.",
-      "version": "4.2.0",
+      "version": "4.2.1",
       "category": "productivity",
       "homepage": "https://github.com/neurawork-git/n8n-autopilot"
     }
