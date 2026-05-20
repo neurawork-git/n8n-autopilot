@@ -1,6 +1,6 @@
 ---
 name: build-workflow
-description: Full 3-phase pipeline (Research → Write+Validate → Deploy+Test) for shipping an n8n workflow end-to-end. Wraps Etienne's `n8n-as-code:n8n-architect` skill for schema research + authoring, adds repo-scoped orchestration: community-template lookup, validate-push-test loop, mcpTrigger publish gate, execution inspection, Completion Report.
+description: "Full 3-phase pipeline (Research → Write+Validate → Deploy+Test) for shipping an n8n workflow end-to-end. Wraps Etienne's `n8n-as-code:n8n-architect` skill for schema research + authoring, adds repo-scoped orchestration — community-template lookup, validate-push-test loop, mcpTrigger publish gate, execution inspection, Completion Report."
 argument-hint: '"Description of what the workflow should do"'
 user-invocable: true
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(npx:*), Bash(grep:*), Bash(node:*), Bash(npm:*), Bash(find:*), Bash(cat:*), Bash(jq:*), Bash(mkdir:*)

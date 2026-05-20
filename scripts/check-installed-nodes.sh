@@ -21,9 +21,29 @@ REPO_DIR="$PWD"
 INDEX="$REPO_DIR/schemas/_index.json"
 ENV_FILE="$REPO_DIR/.env"
 
-# ── 1. Load N8N_API_URL and N8N_API_KEY from .env ────────────────────────────
+# ── 1. Resolve API endpoint + key ─────────────────────────────────────────────
+# Under n8nac >= 2.2 with a bound workspace, the API key lives in the secure
+# manager store (`~/.n8n-manager/`) and is NOT exposed via `workspace status`.
+# We can still PING the host (no auth needed for a 401-probe), but we cannot
+# query authenticated endpoints like `/community-packages` without `.env`.
+#
+# Resolution priority:
+#   1. `.env` with N8N_API_URL + N8N_API_KEY — authoritative, do auth probe
+#   2. Bound workspace, no `.env`             — silent skip (expected state)
+#   3. Neither                                — silent skip (plugin not set up)
+
 if [ ! -f "$ENV_FILE" ]; then
-  [ "$QUIET" -eq 0 ] && echo "  ℹ️  check-installed-nodes: .env not found — skipping."
+  # Probe whether workspace is bound (expected state under n8nac >= 2.2)
+  WS_BOUND=$(npx --yes n8nac workspace status --json 2>/dev/null \
+             | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);process.stdout.write((j.activeEnvironment&&j.activeEnvironment.projectId)?'yes':'no');}catch(e){process.stdout.write('no');}});" 2>/dev/null || echo "no")
+  if [ "$WS_BOUND" = "yes" ]; then
+    # Expected n8nac >= 2.2 state. Schema-coverage check requires a key the
+    # plugin cannot retrieve from the secure store — emit a quiet note only
+    # in non-quiet mode, and skip cleanly. SessionStart stays uncluttered.
+    [ "$QUIET" -eq 0 ] && echo "  ℹ️  check-installed-nodes: workspace bound (n8nac >= 2.2 keeps API key in secure store; cannot probe /community-packages). Run \`/n8n-autopilot:pull-schemas\` after installing new community nodes."
+    exit 0
+  fi
+  [ "$QUIET" -eq 0 ] && echo "  ℹ️  check-installed-nodes: .env not found and workspace not bound — skipping."
   exit 0
 fi
 

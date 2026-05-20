@@ -2,6 +2,22 @@
 
 All notable changes to **n8n-autopilot** are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [4.2.2] — 2026-05-20
+
+### Fixed — Skill frontmatter YAML parse errors + n8nac >= 2.2 quiet-skip in community-node check
+
+Two bugs found via `claude --debug` log inspection in the Falkensteg consumer repo:
+
+**1. YAML parse failure in two skills** — Claude Code's loader reported `[WARN] Failed to parse YAML frontmatter` for `skills/n8nac-cheatsheet/SKILL.md` and `skills/build-workflow/SKILL.md`. Both skills were silently dropped from the session — only 14 of 16 plugin skills were loading. Root cause: an unquoted `description:` value contained `<word>: ` (e.g. "common workflows: lookup"), which js-yaml parses as a nested mapping. Fixed by wrapping both descriptions in quotes (single for one, double for the other due to embedded apostrophes / backticks) and replacing the inline colons with em-dashes where readability allowed.
+
+**2. `check-installed-nodes` warned about missing `.env` even on bound workspaces** — n8nac >= 2.2 stores the API key in the secure manager store (`~/.n8n-manager/`), NOT in a workspace `.env`. The schema-coverage probe needs the key to query `/community-packages`, but it cannot retrieve it from the secure store. Pre-4.2.2 the script just printed "ℹ️  .env not found — skipping" on every session, which was misleading (looked like a setup issue, was actually the expected state). Now resolves auth in three tiers:
+
+1. `.env` with `N8N_API_URL` + `N8N_API_KEY` — authoritative, runs the probe.
+2. No `.env` but workspace bound — silent skip with explanatory note ("workspace bound (n8nac >= 2.2 keeps API key in secure store; cannot probe `/community-packages`). Run `/n8n-autopilot:pull-schemas` after installing new community nodes.").
+3. Neither — quiet "skipping" (genuinely unconfigured).
+
+No skill changes, no manifest changes beyond the version bump.
+
 ## [4.2.1] — 2026-05-20
 
 ### Fixed — SessionStart hook path resolution (consumer workspace, not plugin dir)

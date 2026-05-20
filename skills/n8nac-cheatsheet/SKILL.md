@@ -1,6 +1,6 @@
 ---
 name: n8nac-cheatsheet
-description: Curated "user intent → exact command" mapping for the n8nac CLI. Use this BEFORE reading `n8nac-reference` or running `--help`. Covers the 60+ common workflows: lookup, deploy, test, debug, migrate, credentials, projects, environments. If your task matches a row here, run the linked command verbatim — no flag fishing.
+description: 'Curated "user intent → exact command" mapping for the n8nac CLI. Use this BEFORE reading `n8nac-reference` or running `--help`. Covers the 60+ common workflows — lookup, deploy, test, debug, migrate, credentials, projects, environments. If your task matches a row here, run the linked command verbatim — no flag fishing.'
 allowed-tools: Read, Grep
 ---
 
