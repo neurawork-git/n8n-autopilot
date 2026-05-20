@@ -28,13 +28,14 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const argv = process.argv.slice(2);
-const opts = { workspace: process.cwd(), dryRun: false };
+const opts = { workspace: process.cwd(), dryRun: false, allProjects: false };
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
-  if (a === '--workspace')   opts.workspace = argv[++i];
-  else if (a === '--dry-run') opts.dryRun = true;
+  if (a === '--workspace')        opts.workspace = argv[++i];
+  else if (a === '--dry-run')     opts.dryRun = true;
+  else if (a === '--all-projects') opts.allProjects = true;
   else if (a === '-h' || a === '--help') {
-    process.stdout.write('Usage: node fix-workflows.js [--workspace dir] [--dry-run]\n');
+    process.stdout.write('Usage: node fix-workflows.js [--workspace dir] [--dry-run] [--all-projects]\n');
     process.exit(0);
   } else {
     console.error(`unknown flag: ${a}`);
@@ -48,6 +49,17 @@ if (!fs.existsSync(wfDir)) {
   console.error(`No workflows/ directory at ${wfDir}`);
   process.exit(2);
 }
+
+// ── 0. Active project (default scope)
+let activeProject = null;
+try {
+  const ws = JSON.parse(execSync('npx --yes n8nac workspace status --json', {
+    cwd: workspace, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 4 * 1024 * 1024
+  }).toString());
+  if (ws.activeEnvironment && ws.activeEnvironment.projectId) {
+    activeProject = { id: ws.activeEnvironment.projectId, name: ws.activeEnvironment.projectName || '?' };
+  }
+} catch (e) { /* allowed: workspace not bound surfaces in next step */ }
 
 // ── 1. Live credentials
 let raw;
@@ -63,6 +75,7 @@ try {
 }
 
 let liveByName = {};
+let skippedOffProject = 0;
 try {
   const parsed = JSON.parse(raw);
   const creds = Array.isArray(parsed) ? parsed : (parsed.credentials || parsed.data || []);
@@ -71,17 +84,37 @@ try {
     const id   = c.id   || c.credentialId;
     const type = c.type || c.credentialTypeName || c.credentialType;
     if (!name || !id || !type) continue;
+
+    // Determine home project (first shared entry with role=credential:owner)
+    const owner = (c.shared || []).find(s => s.role === 'credential:owner') || (c.shared || [])[0];
+    const homeProjectId = owner ? owner.id : null;
+
+    // Project-scoping: default = drop creds outside the active project
+    if (!opts.allProjects && activeProject && homeProjectId && homeProjectId !== activeProject.id) {
+      skippedOffProject++;
+      continue;
+    }
+
     if (liveByName[name]) {
-      // duplicate name on instance — keep first, mark conflict
       liveByName[name]._conflict = true;
     } else {
-      liveByName[name] = { id, type };
+      liveByName[name] = { id, type, homeProjectId };
     }
   }
 } catch (e) {
   console.error('Could not parse n8nac credential list JSON.');
   process.exit(1);
 }
+
+if (activeProject) {
+  console.log(`Project scope: ${activeProject.name} (${activeProject.id})${opts.allProjects ? '  [--all-projects: scope ignored]' : ''}`);
+  if (!opts.allProjects && skippedOffProject > 0) {
+    console.log(`Skipped ${skippedOffProject} credential(s) owned by other projects (use --all-projects to include them).`);
+  }
+} else {
+  console.log('Project scope: NONE (no active project pin) — scanning every visible credential.');
+}
+console.log('');
 
 // ── 2. Find workflow files
 function walk(d, acc = []) {

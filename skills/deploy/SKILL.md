@@ -30,17 +30,31 @@ npx n8nac skills validate workflows/<name>.workflow.ts --strict --json
 
 If validation fails → **stop and report**. Do not push with validation errors.
 
-### 3. Check sync status
+### 3. Drift check (mandatory — enforced by push-gate hook)
 
 ```bash
-npx n8nac list
+# Extract workflow id from @workflow({ id: '...' }) in the file
+WF_ID=$(grep -oE "id:[[:space:]]*['\"][A-Za-z0-9]{10,}['\"]" workflows/<name>.workflow.ts | head -1 | grep -oE "[A-Za-z0-9]{10,}")
+
+# Refresh remote cache, then read sync status
+npx n8nac fetch "$WF_ID"
+npx n8nac list --search "$WF_ID" --json
 ```
 
-- **ARCHIVED** → stop. Read-only. Tell the user to unarchive via n8n UI or create a new workflow.
-- **CONFLICT** → resolve first:
-  ```bash
-  npx n8nac resolve <id> --mode keep-current    # use local version
-  ```
+Decision table:
+
+| status | Action |
+|---|---|
+| `TRACKED` | Safe to push. Proceed to step 4. |
+| `LOCAL_ONLY` | New workflow (no remote yet). Safe to push (no overwrite risk). |
+| `CONFLICT` / `MODIFIED_BOTH` / `DIVERGED` | **STOP.** Remote was modified since last pull. Run `npx n8nac pull "$WF_ID"`, re-apply your local change on top, then re-validate. NEVER use `npx n8nac resolve --mode keep-current` without explicit user authorization — the push-gate hook will block it. |
+| `REMOTE_ONLY` | Local file references a remote id but no local tracking entry. Run `npx n8nac pull "$WF_ID"` first. |
+| `ARCHIVED` | Read-only. Stop. Tell the user to unarchive via n8n UI or create a new workflow. |
+
+If the user has confirmed they want to discard the remote change:
+```bash
+N8N_AUTOPILOT_ALLOW_LOCAL_WINS=1 npx n8nac push workflows/<name>.workflow.ts --verify
+```
 
 ### 4. Push + verify in one call
 

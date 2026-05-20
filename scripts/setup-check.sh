@@ -172,13 +172,23 @@ let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{
   fi
 fi
 
-# ── 6. Community node schema coverage ────────────────────────────────────────
+# ── 6. Project visibility (multi-project awareness) ─────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ -n "${WS_STATE:-}" ] && [[ "$WS_STATE" == bound* ]]; then
+  echo ""
+  echo "=== Project Visibility ==="
+  if command -v node &>/dev/null && [ -f "$PLUGIN_ROOT/skills/find-project/scripts/list.js" ]; then
+    node "$PLUGIN_ROOT/skills/find-project/scripts/list.js" 2>/dev/null | sed 's/^/  /' || true
+  fi
+fi
+
+# ── 7. Community node schema coverage ────────────────────────────────────────
 echo ""
 echo "=== Community Node Schema Check ==="
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 bash "$SCRIPT_DIR/check-installed-nodes.sh" 2>/dev/null || WARNINGS=$((WARNINGS + 1))
 
-# ── 7. Inventory freshness ────────────────────────────────────────────────────
+# ── 8. Inventory freshness ────────────────────────────────────────────────────
 bash "$SCRIPT_DIR/check-inventory-freshness.sh" 2>/dev/null
 
 # ── Summary ───────────────────────────────────────────────────────────────────

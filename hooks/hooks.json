@@ -37,6 +37,11 @@
           },
           {
             "type": "command",
+            "command": "INPUT=\"$CLAUDE_TOOL_INPUT\"; bash ${CLAUDE_PLUGIN_ROOT}/scripts/push-gate.sh \"$INPUT\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
             "command": "INPUT=\"$CLAUDE_TOOL_INPUT\"; if echo \"$INPUT\" | grep -qE 'n8nac push' 2>/dev/null; then bash ${CLAUDE_PLUGIN_ROOT}/scripts/ensure-mcp-trigger-setting.sh \"$INPUT\" 2>&1; fi",
             "timeout": 5
           }

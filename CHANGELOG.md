@@ -2,6 +2,62 @@
 
 All notable changes to **n8n-autopilot** are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [4.2.0] — 2026-05-20
+
+### Added — n8nac knowledge skills (full CLI reference + curated cheatsheet)
+
+Two new knowledge skills end the "agent fishing through `--help`" pattern:
+
+**`n8nac-reference`** (`skills/n8nac-reference/`)
+- Auto-generated, machine-walked `n8nac --help` tree.
+- 74 subcommands across 26 top-level groups (workspace, env, instance-target, setup, credentials, credential, workflow, execution, skills, plus 14 root-level commands like `list`, `find`, `pull`, `push`, `promote`, `verify`, `test`, `test-plan`, `fetch`, `resolve`, `convert`, `convert-batch`, `mcp`, `update-ai`).
+- Source of truth: **if a command is not in `reference.md`, it does not exist** — agents must not invent CLI surface.
+- Regenerated via `scripts/dump-n8nac-help.sh` (re-run after any n8nac upgrade).
+- Strict-mode help parser (column-3 anchor + alias-strip) keeps the file at ~1500 lines rather than the runaway 11000+ lines the loose parser produced on first attempt.
+
+**`n8nac-cheatsheet`** (`skills/n8nac-cheatsheet/`)
+- Curated "user intent → exact command" table, ~60 rows, grouped into Workspace, Multi-Environment, Instance Targets, Workflow Lifecycle, Testing & Execution, Credentials (CRUD + recipes), Schemas/Node Info, Telemetry.
+- Highlights the singular `credential` vs. plural `credentials` distinction (most common "command not found" footgun), the push-gate bypass env var, and the n8nac >= 2.2 setup commands that replaced the removed `init` / `init-auth` / `init-project`.
+- Gotchas section enumerates the 10 most common silent-failure patterns (project visibility, test trigger limits, mcpTrigger publish, archived read-only, etc.).
+
+CLAUDE.md now has a "Knowledge skills" block above the cheat-sheet pointing at both, with the rule: **grep the cheatsheet → grep the reference → only then run `--help` live**. The `n8n-architect` companion skill is also linked as the canonical source for workflow authoring rules.
+
+### Added — Multi-project awareness + push-gate (drift protection) + cheat-sheet
+
+Three structural defects fixed after the Falkensteg session showed Claude fishing through `--help`, inventing CLI subcommands (`skills list-credentials`), and injecting cross-project credential IDs:
+
+**1. New skill `/n8n-autopilot:find-credential`** (`skills/find-credential/`)
+- Search live credentials by name pattern, **scoped to the workspace-pinned project by default**.
+- Flags: `--type <credType>`, `--project <name|id|all>`, `--exact`, `--json`.
+- Returns table grouped by project + paste-ready TypeScript snippets.
+- Shows count of cross-project matches as a footnote when default-scoped (no leak, but visible).
+- Replaces the ad-hoc "`n8nac credential list --json | grep`" pattern that ignored project scope and routinely picked the wrong project's credential ID.
+
+**2. New skill `/n8n-autopilot:find-project`** (`skills/find-project/`)
+- Enumerates every n8n project visible on the active instance (derived from `credential list --json` → `shared[].name` / `shared[].id` — works without the Enterprise `/api/v1/projects` endpoint).
+- Marks the workspace-pinned project, prints the exact `workspace set-project` command to switch.
+- Falkensteg shipped seven projects; agents had no way to see the others before this.
+
+**3. Push-gate hook (`scripts/push-gate.sh`)** — wired into `hooks.json` PreToolUse(Bash)
+- BLOCKS `npx n8nac push <file>` when `n8nac list --search <id>` returns status `CONFLICT` / `MODIFIED_BOTH` / `DIVERGED` / `REMOTE_ONLY`. Hook auto-runs `n8nac fetch <id>` first, so the verdict is always against fresh remote state.
+- BLOCKS `npx n8nac resolve <id> --mode keep-current|keep-local|local-wins` unconditionally — this command silently overwrites remote with local.
+- Single bypass: `N8N_AUTOPILOT_ALLOW_LOCAL_WINS=1 <re-run command>` (requires explicit user authorization that remote changes are to be discarded).
+- New workflows (file with no `id:` field) are never blocked.
+
+**4. `sync-credentials --fix-workflows` now project-scoped by default**
+- Joins workflow credential references against ONLY credentials owned by the active workspace project. Cross-project name collisions no longer rewrite IDs into the wrong project.
+- Header now reports `Project scope: <name> (<id>)` and "Skipped N credential(s) owned by other projects" so the scope is visible in every run.
+- New flag `--all-projects` disables the filter (rare, used when migrating workflows between projects).
+
+**5. CLAUDE.md cheat-sheet at the top of the file**
+- "User asks X → run Y" table covering every common request (find credential, list projects, switch project, build, deploy, fix creds, inventory, data-tables, executions, etc.).
+- Push-gate section documenting block conditions and the override env var.
+- Multi-project rule stated up front: every credential / workflow operation runs in the workspace-pinned project's scope; verify the pin before touching credentials.
+
+**6. `check-mcps` skill + `setup-check.sh` Section 6** now print the project visibility table on every health check / SessionStart, so multi-project state is visible without an explicit query.
+
+**Why this matters (Falkensteg incident pattern):** workspace pinned to project A, instance has projects A–G, `n8nac credential list --json` returns creds from all visible projects. Agent matches by name only → injects credential ID from project F into a workflow in project A → push succeeds, runtime fails with "credential not accessible". After 4.2.0: `find-credential` shows only project A by default, `sync-credentials --fix-workflows` will not rewrite cross-project IDs, push-gate refuses to silently overwrite remote changes.
+
 ## [4.1.0] — 2026-05-19
 
 ### Changed — skills now invoke bundled scripts, no inline executable code

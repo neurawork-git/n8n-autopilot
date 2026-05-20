@@ -48,7 +48,15 @@ grep -q '"n8n-as-code@n8nac-marketplace": true' "$HOME/.claude/settings.json" &&
   claude plugin install n8n-as-code@n8nac-marketplace"
 ```
 
-## Step 4 — Report
+## Step 4 — Project visibility
+
+```bash
+node "$CLAUDE_PLUGIN_ROOT/skills/find-project/scripts/list.js"
+```
+
+Prints the workspace-pinned project plus every project derivable from credential ownership. Surface the table to the user — multi-project blindness (referencing creds from the wrong project) is the most common cause of "workflow pushes but fails at runtime".
+
+## Step 5 — Report
 
 Print a one-line summary per layer, plus the most likely fix for any FAIL:
 

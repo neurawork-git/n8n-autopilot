@@ -23,10 +23,12 @@ Prints a table of all credentials on the active n8n instance plus ready-to-paste
 ### `--fix-workflows` — rewrite stale credential IDs
 
 ```bash
-node "$CLAUDE_PLUGIN_ROOT/skills/sync-credentials/scripts/fix-workflows.js" [--dry-run]
+node "$CLAUDE_PLUGIN_ROOT/skills/sync-credentials/scripts/fix-workflows.js" [--dry-run] [--all-projects]
 ```
 
-Walks `workflows/**/*.workflow.ts`, finds every `credentials: { <type>: { id: '…', name: '…' } }` block, joins by credential **name** against the live instance, and rewrites the `id` value where the live ID differs from the local one. Order of `id` / `name` inside the block is tolerated; type mismatches and orphans are reported and NOT auto-rewritten.
+Walks `workflows/**/*.workflow.ts`, finds every `credentials: { <type>: { id: '…', name: '…' } }` block, joins by credential **name** against the live instance **filtered to the workspace-pinned project**, and rewrites the `id` value where the live ID differs from the local one. Order of `id` / `name` inside the block is tolerated; type mismatches and orphans are reported and NOT auto-rewritten.
+
+**Project scoping (default):** credentials owned by projects other than the active workspace project are dropped from the candidate pool. This prevents cross-project ID injection that would push fine but fail at runtime ("credential not accessible"). Use `--all-projects` to disable the filter (rare).
 
 Add `--dry-run` to preview without writing files.
 

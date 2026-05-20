@@ -1,6 +1,6 @@
 {
   "name": "n8n-autopilot",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "description": "Claude Code plugin for building, validating, and deploying n8n workflows. Wraps the n8nac CLI (reference 2.2.1) and delegates schema research to the companion plugin `n8n-as-code` by Etienne Lescot.",
   "author": {
     "name": "Neurawork",
