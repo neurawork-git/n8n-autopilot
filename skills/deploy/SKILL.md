@@ -28,7 +28,9 @@ If `$ARGUMENTS` is provided, use it. Otherwise, ask the user.
 npx n8nac skills validate workflows/<name>.workflow.ts --strict --json
 ```
 
-If validation fails → **stop and report**. Do not push with validation errors.
+If validation fails → **stop and report**. Do not push with validation errors. For interpreting
+the error (false-positives, expression vs schema errors, auto-sanitization, bulk fixes), consult the
+`n8n-validation-expert` guidance skill — n8nac's raw validator messages are often terse.
 
 ### 3. Drift check (mandatory — enforced by push-gate hook)
 
@@ -47,7 +49,7 @@ Decision table:
 |---|---|
 | `TRACKED` | Safe to push. Proceed to step 4. |
 | `LOCAL_ONLY` | New workflow (no remote yet). Safe to push (no overwrite risk). |
-| `CONFLICT` / `MODIFIED_BOTH` / `DIVERGED` | **STOP.** Remote was modified since last pull. Run `npx n8nac pull "$WF_ID"`, re-apply your local change on top, then re-validate. NEVER use `npx n8nac resolve --mode keep-current` without explicit user authorization — the push-gate hook will block it. |
+| `CONFLICT` / `MODIFIED_BOTH` / `DIVERGED` | **STOP.** Remote was modified since last pull. To avoid re-typing your edit: `cp` the local file to `<file>.local-bak`, run `npx n8nac pull "$WF_ID"` (remote wins), then diff the backup against the pulled file and re-apply your change as a small patch, then re-validate. NEVER use `npx n8nac resolve --mode keep-current` without explicit user authorization — the push-gate hook will block it. |
 | `REMOTE_ONLY` | Local file references a remote id but no local tracking entry. Run `npx n8nac pull "$WF_ID"` first. |
 | `ARCHIVED` | Read-only. Stop. Tell the user to unarchive via n8n UI or create a new workflow. |
 
@@ -91,7 +93,7 @@ Extract `triggerType`, `testable`, `suggestedPayload`.
 | Trigger | Testable via CLI? | Action |
 |---|---|---|
 | `webhook`, `chat`, `form` | yes | proceed to live test |
-| `schedule`, `manual`, `errorTrigger` | no | skip live test, surface manual-execution notice (see step 9) |
+| `schedule`, `manual`, `errorTrigger` | no | skip CLI live test → run `/n8n-autopilot:test-manual <workflowId>` which resolves the UI URL, waits for the execution-id, and inspects the run for you |
 
 ### 7. Live test (test URL — no activation needed)
 

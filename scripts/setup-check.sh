@@ -109,6 +109,29 @@ let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{
   fi
 fi
 
+# ── 3b. Effective SESSION env (honors N8NAC_ENVIRONMENT / --env) ─────────────
+# `workspace status` resolves only the GLOBAL active env — it ignores
+# N8NAC_ENVIRONMENT and --env. `env status --json` resolves the env this session
+# actually targets, so the reported host/project match what commands will hit.
+ENV_NAME=""; ENV_HOST=""; ENV_PROJECT=""
+if [ -n "$INSTALLED_N8NAC" ]; then
+  ENV_JSON=$(npx --yes n8nac env status --json 2>/dev/null || echo "")
+  if [ -n "$ENV_JSON" ]; then
+    IFS=$'\t' read -r ENV_NAME ENV_HOST ENV_PROJECT <<EOF2
+$(printf "%s" "$ENV_JSON" | node -e "
+let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{
+  try { const i=d.indexOf('{'); const j=JSON.parse(d.slice(i)); const r=j.resolved||j;
+    process.stdout.write([(j.name||r.environmentName||''),(r.host||''),(r.projectName||'')].join('\t')); }
+  catch(e){}
+});" 2>/dev/null)
+EOF2
+    if [ -n "$ENV_NAME" ]; then
+      SRC="N8NAC_ENVIRONMENT"; [ -z "${N8NAC_ENVIRONMENT:-}" ] && SRC="pinned/global"
+      echo "OK: session env: ${ENV_NAME} -> ${ENV_HOST} / ${ENV_PROJECT:-<default project>} (via ${SRC})"
+    fi
+  fi
+fi
+
 # ── 4. n8nac CLI smoke test ──────────────────────────────────────────────────
 # `set -e` would abort the script on any non-zero exit — wrap probes in `|| true`.
 if [ -n "$INSTALLED_N8NAC" ]; then
@@ -138,14 +161,15 @@ if [ -f "$USER_SETTINGS" ]; then
 fi
 
 # ── 5. n8n API connectivity (host pulled from workspace status, not file) ────
-if [ -n "$WS_JSON" ] && command -v curl &>/dev/null; then
-  N8N_HOST=$(echo "$WS_JSON" | node -e "
+if command -v curl &>/dev/null; then
+  # Prefer the SESSION env host (env status, honors N8NAC_ENVIRONMENT); fall back
+  # to the global workspace-status host only if env resolution failed.
+  N8N_HOST="$ENV_HOST"
+  if [ -z "$N8N_HOST" ] && [ -n "$WS_JSON" ]; then
+    N8N_HOST=$(echo "$WS_JSON" | node -e "
 let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{
   try {
     const j=JSON.parse(d);
-    // Probe both shapes:
-    //   BOUND:   { activeEnvironment: { environmentTargetId, ... }, environmentTargets: [{ id, url }] }
-    //   PENDING: { operations: [{ instances: [{ url }] }] }
     if (j.activeEnvironment && Array.isArray(j.environmentTargets)) {
       const tgt = j.environmentTargets.find(t => t.id === j.activeEnvironment.environmentTargetId);
       if (tgt && tgt.url) { process.stdout.write(tgt.url); return; }
@@ -155,6 +179,7 @@ let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{
     process.stdout.write(url);
   } catch(e) { process.stdout.write(''); }
 });" 2>/dev/null || echo "")
+  fi
   if [ -n "$N8N_HOST" ]; then
     BASE_URL="${N8N_HOST%/}/api/v1"
     HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \

@@ -3,8 +3,6 @@
 This repo uses the **n8n-autopilot plugin** for Claude Code.
 Workflows are TypeScript (Decorator format). Never write n8n JSON by hand.
 
-> **You are in the INTERNAL repo (`neurawork-git/n8n-autopilot-internal`).** The matching public repo is `neurawork-git/n8n-autopilot` at `~/Documents/Repositories/n8n-autopilot-public/`. When the user asks to release / publish / ship to public, follow [`RELEASE_PROCESS.md`](RELEASE_PROCESS.md) — it is the authoritative manual procedure for syncing internal → public.
-
 > **Reference n8nac version: 2.2.1** (minimum 2.2.0). All setup, workspace, and credential flows below target the v2 manager-backed storage model. Single source of truth: `REFERENCE_N8NAC_VERSION` constant in `scripts/setup-check.sh`. Bump procedure: update the constant, sync README badges + `plugin.json`, add CHANGELOG entry.
 
 ## Knowledge skills — read BEFORE inventing CLI surface
@@ -27,14 +25,21 @@ Workflows are TypeScript (Decorator format). Never write n8n JSON by hand.
 | "list n8n projects" / "which projects exist" / "show projects on instance" | `/n8n-autopilot:find-project` |
 | "switch workspace to project X" | `npx n8nac workspace set-project --project-name "<X>"` then `/n8n-autopilot:check-mcps` |
 | "show active project / instance binding" | `npx n8nac workspace status --json` |
-| "build a workflow that does X" | `/n8n-autopilot:build-workflow "<description>"` |
+| "build a workflow that does X" | `/n8n-autopilot:build-workflow "<description>"` (prose pipeline) |
+| "build/edit with hard-enforced gates" (experimental) | `/n8n-autopilot:build-workflow-v2 "<description>"` — JS-orchestrated, gate-checks as control flow |
+| "build a whole multi-workflow STACK" / "orchestrator + sub-workflows from one use case" (experimental) | `/n8n-autopilot:build-stack-v2 "<end-to-end use case>"` (or `extend "<stack>" "<change>"`) — decompose → handover contracts + mermaid → bottom-up build via build-workflow-v2 |
+| "help me plan an n8n workflow" / "I want to automate X but don't know how" / user has only a rough idea | `/n8n-autopilot:stack-intake "<one-line idea>"` — guided interview → writes a PRP for build-stack-v2 |
 | "deploy <file>.workflow.ts" | `/n8n-autopilot:deploy <file>.workflow.ts` |
+| "pull every remote-only workflow / fix mirror drift" | `/n8n-autopilot:mirror-sync` |
+| "which env/instance is this session on" / "pin session to env X" | `npx n8nac env list --json` · pin per-session via `export N8NAC_ENVIRONMENT=<env>` or per-call `npx n8nac --env <env> …` |
 | "fix stale credential IDs in workflows" | `/n8n-autopilot:sync-credentials --fix-workflows` (project-scoped) |
 | "regenerate inventory / list of nodes" | `/n8n-autopilot:inventory` |
 | "data table CRUD" (create/seed/list/drop tables in n8n) | `/n8n-autopilot:data-tables` |
+| "give feedback" / "report friction" / "feedback zum plugin" | `/n8n-autopilot:feedback` (interview); `/n8n-autopilot:feedback sync` pushes centrally (consent-gated) |
 | "pull schemas" / "update node schemas" | `/n8n-autopilot:pull-schemas` |
 | "check setup / MCP / instance health" | `/n8n-autopilot:check-mcps` |
 | "find a workflow by name" | `npx n8nac find <query> --json` (use `--remote` for instance-side, default = local+remote) |
+| "test schedule/manual/error-trigger workflow" / "non-HTTP test" | `/n8n-autopilot:test-manual <workflowId>` (resolves UI URL → waits for execution-id → inspects run) |
 | "show executions of workflow <id>" | `npx n8nac execution list --workflow <id>` |
 | "inspect a specific execution" | `npx n8nac execution get <executionId> --include-data` |
 | "resolve workflow URL for UI" | `npx n8nac workflow present <id> --json` |
@@ -62,6 +67,30 @@ Default reconciliation path when push is blocked:
 3. `npx n8nac push <id> --verify` again
 
 The hook auto-runs `npx n8nac fetch <id>` before judging status, so the verdict is always against fresh remote state. Workflows without an `id:` field (new creations) are never blocked.
+
+## Env-Gate (one env per session — enforced by hook)
+
+A session works in exactly ONE n8n env (instance + project). The `PreToolUse` hook
+`scripts/enforce-env.sh` **fail-closed BLOCKS** any instance-touching `npx n8nac` command that
+resolves to NO explicit env — otherwise it would silently hit the mutable GLOBAL active env
+(`env use`), which is shared across sessions and wrong when sessions target different projects.
+
+An env is "resolved" (command allowed) when ANY of these holds:
+- session default set: `export N8NAC_ENVIRONMENT=<env-name>` (the normal per-session pin), or
+- inline: `N8NAC_ENVIRONMENT=<env-name> npx n8nac …`, or
+- per-call flag: `npx n8nac --env <env-name> …`.
+
+Local-only subcommands never touch an instance and are never gated:
+`skills`, `convert`, `convert-batch`, `workspace`, `env`, `setup`, `setup-modes`, `telemetry`,
+`update-ai`, `help`, `--version`. Everything that contacts the instance (`list`, `find`, `pull`,
+`push`, `fetch`, `verify`, `test`, `test-plan`, `resolve`, `promote`, `execution`, `credential[s]`,
+`workflow`) is gated.
+
+`npx n8nac env list --json` lists envs + their projects. n8nac itself throws
+`Unknown workspace environment: <name>` on a bogus env name (so a typo fails closed, never silently
+falls back). The SessionStart hook `scripts/report-session-env.sh` prints the active session env
+(name + host + project) so you always know where you are. **Verified routing**: `N8NAC_ENVIRONMENT`
+and `--env` both route instance commands to the named env's instance, independent of the global active.
 
 ## Setup
 
@@ -101,11 +130,13 @@ SessionStart hooks emit `AUTOPILOT_ACTION_REQUIRED: <slash-command>` lines when 
 | `check-schema-versions.sh` | direct (SessionStart) | Cached schema older than latest npm version | `/n8n-autopilot:pull-schemas --community-only --packages <list>` |
 | `check-installed-nodes.sh` | indirect (called by `setup-check.sh` Section 7) | Community node installed on instance, no cached schema | `/n8n-autopilot:pull-schemas --community-only --packages <list>` |
 | `check-credential-freshness.sh` | direct (SessionStart) | Workflow references credential ID that does not exist on instance | `/n8n-autopilot:sync-credentials --fix-workflows` |
+| `check-mirror-drift.sh` | direct (SessionStart) | Remote workflow exists on instance with no local file (local mirror incomplete) | `/n8n-autopilot:mirror-sync` |
 
 Hard rule: parse the literal slash-command after `AUTOPILOT_ACTION_REQUIRED:` and execute it. Do not paraphrase, do not skip the `--packages` list, do not bundle multiple signals into one call — run each line as written.
 
 Signals NOT auto-triggered (informational only):
 - `check-inventory-freshness.sh` (`INFO:` prefix — surface to user, do not auto-regenerate; inventory regeneration is expensive).
+- `check-feedback-pending.sh` (`INFO:` prefix — unsynced autopilot feedback records exist; offer `/n8n-autopilot:feedback`, do NOT auto-run — giving/syncing feedback needs user consent).
 - `check-workspace-migration.sh` — flags legacy in-repo `./n8nac-config.json` (suggests `npx n8nac workspace migrate-v1 --write`) and `workspace status: dry-run` / `migration-required` (suggests `npx n8nac workspace migrate --write`). Migrations move files on the user's filesystem — surface the block to the user verbatim, do NOT auto-run.
 
 ## Entry Point
@@ -176,6 +207,9 @@ zeigen einen prominenten Hinweis statt automatischem Re-Publish.
 
 `n8nac test` kann nur Webhook-/Chat-/Form-Trigger auslösen. Für `schedule`, `manual`, `errorTrigger`:
 
+→ **`/n8n-autopilot:test-manual <workflowId>`** bündelt den ganzen Detour (URL auflösen → auf
+execution-id warten → Run inspizieren). Manuell sind die Schritte:
+
 1. URL via n8nac auflösen: `npx n8nac workflow present <workflowId> --json`
 2. n8n-UI unter dieser URL öffnen
 3. "Execute Workflow"-Button klicken
@@ -189,6 +223,41 @@ Die `build-workflow` pipeline (Path B) stoppt automatisch und prompted den User 
 n8nac has no `datatable` subcommand. Managing DataTable resources (create/list/seed/drop tables, columns, rows) is done via the n8n public REST API at `/api/v1/data-tables`. The PreToolUse curl-block has an explicit carve-out for this path only.
 
 → Use `/n8n-autopilot:data-tables` skill — it documents every endpoint and provides ready-to-paste curl recipes (incl. heredoc-safe JSON for umlauts on Windows).
+
+### Feedback Loop (capture + central feedback)
+
+A `SessionEnd` hook (`scripts/capture-feedback.sh`) silently appends NON-PII friction signal counts
+(an anchored signal taxonomy) from each session to
+`.n8n-autopilot/feedback/events.ndjson` in the consumer repo (gitignored). A `SessionStart` probe
+(`scripts/check-feedback-pending.sh`) emits an `INFO:` nudge when unsynced records exist.
+
+- `/n8n-autopilot:feedback` (default = **review**) — one-shot: reviews the session (auto-captured
+  signals + file-level design metrics from `workflows/*.workflow.ts` + a qualitative pass),
+  LLM-redacts to neutral insights, runs the deterministic PII gate, shows the result, then pushes.
+- `/n8n-autopilot:feedback interview` — manual Q&A only. `… show` — list pending. `… sync` — push only.
+- **Push** = ONE labelled GitHub issue on `neurawork-git/n8n-autopilot-internal` via `gh issue create`
+  (one path, no fallback). **Side-effecting + consent-gated**: shows every record, requires explicit
+  confirmation. Live web-server ingestion = future TODO.
+- **PII (defense-in-depth):** auto-capture stores only counts + repo basename. Before ANY push,
+  `scripts/redact-check.js` deterministically BLOCKS unknown keys + free-text matching
+  email/path/URL/long-digit/token/customer-name patterns — on top of the LLM redaction. No hook ever
+  pushes; capture is local-only.
+
+### Workflow design quality (enforced by `workflow-reviewer`)
+
+The `workflow-reviewer` agent checks 15 points incl. design-quality:
+native-first (prefer `IF`/`Switch`/`Filter`/`Set` over Code nodes), no silent failures
+(`continueOnFail`/`onError:continue` without an error branch), memory/large-data (Code nodes on big
+DB result sets → OOM; use `SplitInBatches`/pagination), descriptions present, no overlapping node
+positions. Deeper authoring rules stay with the companion `n8n-architect` plugin.
+
+Auto-activated workflow-pattern guidance skills (org-learned, concrete examples):
+- `n8n-orchestration-patterns` — fan-out/fan-in, parallel sub-workflows (branch-split trap,
+  `executionOrder: v0`, DataTable fan-in), synchronous batch + fast-return webhook.
+- `n8n-structured-extraction` — LLM extraction/classification via a real JSON schema (Information
+  Extractor / Text Classifier), never Agent+prompt.
+- `/n8n-autopilot:data-tables` — now also documents the upsert node shape (3-part requirement) +
+  usage patterns (fan-in store, idempotency/dedup, error rows).
 
 ### NEVER do these (enforced by hooks)
 - Never call n8n REST API directly (curl, fetch, HTTP Request node) — **exception:** `/api/v1/data-tables` via the `data-tables` skill

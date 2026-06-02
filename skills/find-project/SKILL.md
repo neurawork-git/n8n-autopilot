@@ -24,18 +24,18 @@ node "$CLAUDE_PLUGIN_ROOT/skills/find-project/scripts/list.js" "$ARGUMENTS"
 ## Output shape
 
 ```
-Active project pin: Maximilian (BFOi3Ip4tIRPFnMg)
+Active project pin: Personal (BFOi3Ip4tIRPFnMg)
 
-Projects visible on https://n8n.falkensteg.ai:
+Projects visible on https://n8n.example.com:
 
   ID                Name                Credentials  Active pin?
   ----------------  ------------------  -----------  -----------
-  BFOi3Ip4tIRPFnMg  Maximilian          14           ← active
-  NhVwnjvOp5c5687N  Confidential RAG    21
+  BFOi3Ip4tIRPFnMg  Personal            14           ← active
+  NhVwnjvOp5c5687N  Shared Project      21
   abcDEF1234567890  Marketing Ops       7
 
 To switch the workspace to a different project:
-  npx n8nac workspace set-project --project-name "Confidential RAG"
+  npx n8nac workspace set-project --project-name "Shared Project"
   npx n8nac workspace set-project --project-id "NhVwnjvOp5c5687N"
 
 After switching, re-run /n8n-autopilot:check-mcps to verify the new scope.
@@ -43,7 +43,7 @@ After switching, re-run /n8n-autopilot:check-mcps to verify the new scope.
 
 ## Why this skill exists
 
-Falkensteg-class incidents: agents reference credentials from the wrong project because they cannot enumerate projects via the n8n public API. `workspace status` only shows the *active* pin, not the alternatives. This skill derives the full project set from credential ownership and surfaces the exact switch command.
+A common class of incidents: agents reference credentials from the wrong project because they cannot enumerate projects via the n8n public API. `workspace status` only shows the *active* pin, not the alternatives. This skill derives the full project set from credential ownership and surfaces the exact switch command.
 
 ## Exit codes
 

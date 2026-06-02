@@ -50,3 +50,6 @@ n8nac-skills.cmd
 
 # Compiled workflow output
 out/
+
+# Autopilot feedback runtime store (auto-captured signals + interview notes — never commit; PII risk)
+.n8n-autopilot/

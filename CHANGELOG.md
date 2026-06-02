@@ -2,11 +2,207 @@
 
 All notable changes to **n8n-autopilot** are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [4.9.0] — 2026-05-30
+
+### Added — build-stack-v2 (workflow-stack orchestrator) + stack-intake interview
+
+Lifts the deterministic v2 discipline from a single workflow to a whole **stack** (an orchestrator plus
+the sub-workflows it calls via Execute Workflow nodes).
+
+- **`build-stack-v2`** skill (`skills/build-stack-v2/stack.workflow.js`) — JS-orchestrated, two modes:
+  - **GREENFIELD** — Plan (decompose a PRP into sub-WFs + handover contracts) → Document
+    (`docs/<stack>.architecture.md` with a deterministically-composed mermaid graph + contract tables)
+    → Build (**topological bottom-up**, one `build.workflow.js` hop per sub-WF, each child's real
+    `workflowId` fed into its parent's Execute Workflow node) → Report.
+  - **EXTEND** — Mirror (`mirror-sync`) → Comprehend (reconstruct the call-graph from `executeWorkflow`
+    refs in the local mirror) → Delta-plan → Apply (new sub-WFs bottom-up via `build.workflow.js`, then
+    changed sub-WFs / orchestrator rewiring via `edit.workflow.js`) → Report.
+  - A failed child build **halts** its dependents (no building on a broken foundation) and escalates;
+    `status:'success'` only when every planned sub-WF built green. Reuses build-workflow-v2's scripts
+    verbatim via the `workflow()` hook (1-level nesting), so every sub-WF gets the same hard gates.
+- **2 agentType definitions** — `n8n-stack-architect` (decompose + delta-plan; `skills:`
+  n8n-orchestration-patterns / n8n-structured-extraction / n8nac-cheatsheet / n8n-architect) and
+  `n8n-stack-comprehender` (reconstruct the DAG from code, reconcile/regenerate the architecture doc).
+  Both read-only.
+- **`stack-intake`** skill — a guided, classic interview for users **not yet experienced with n8n**:
+  asks about overall inputs, outputs, a concrete worked example, expected behavior, external systems,
+  volume, and failure handling, then synthesizes a PRP-style use-case file
+  (`docs/stack-prps/<slug>.prp.md`) ready for `build-stack-v2`. Plans only — never touches the instance.
+
+### Note
+
+- **Experimental + test-gated.** End-to-end stack runs should only be trusted once `build-workflow-v2`
+  (greenfield + edit) is green against the target instance and the `skills:` pass-through is verified.
+  The scaffold ships now; the live stack test follows that gate.
+
+## [4.8.1] — 2026-05-29
+
+### Added — plugin-testing skill + session-state capture
+
+- **`skills/plugin-testing`** — the canonical (and only supported) way to test plugin changes: commit →
+  push to the private repo → install FROM that GitHub repo → restart → verify registration. Documents
+  the hard anti-patterns (no cache hand-copying, no directory-pointer marketplace, no hand-edited
+  `settings.json`, `/reload-plugins` insufficient for new agents) and a verification probe.
+
+## [4.8.0] — 2026-05-29
+
+### Added — JS-orchestrated workflow pipeline v2 (experimental) + env-awareness
+
+**Deterministic gates via Claude Code Workflow scripts.** Where `build-workflow` (v1) is prose the
+model is *asked* to follow, v2 encodes the gate sequence as JS control flow the model cannot skip,
+reorder, or short-circuit (validate before push; test only after `push --verify`; `status:success`
+only after the execution is inspected; bounded fix-loops as real `while` counters).
+
+- **`build-workflow-v2`** skill — two modes: GREENFIELD (`build.workflow.js`) and EDIT
+  (`edit.workflow.js`, local-first: refresh to remote base → patch → drift-safe push). Subagent roles
+  are extracted into namespaced agentTypes (`agents/n8n-*.md`), resolved in-workflow as
+  `n8n-autopilot:n8n-*` (proven: Workflow resolves+spawns namespaced plugin agents).
+- **`mirror-sync`** skill (`sync.workflow.js`) — pulls every remote-only workflow so the repo mirrors
+  the instance (discover `/REMOTE/i` status → fan-out `pull` → verify). Establishes the local-first
+  invariant the edit flow relies on. Auto-triggered by the SessionStart drift probe.
+- **8 agentType definitions** — `n8n-researcher`, `n8n-node-verifier` (adversarial param contract),
+  `n8n-comprehender`, `n8n-author`, `n8n-validator`, `n8n-deployer` (drift-aware), `n8n-tester`,
+  `n8n-mirror`. Reusable across v1/v2 and via the Agent tool directly.
+
+### Added — n8n environment safety (one env per session)
+
+- **`scripts/enforce-env.sh`** (PreToolUse hard gate) — blocks any instance-touching `npx n8nac`
+  command that resolves to NO explicit env (no `--env`, no inline/session `N8NAC_ENVIRONMENT`),
+  preventing silent operations against the shared GLOBAL active env. Local/config subcommands
+  (skills/convert/workspace/env/setup/…) are never gated. Fail-closed.
+- **`scripts/report-session-env.sh`** (SessionStart) — states the session's env (instance + project)
+  up front; warns when none is pinned and only the shared global-active env would be used.
+- Model: **one env per Claude session** via `N8NAC_ENVIRONMENT` (per-repo default in
+  `.claude/settings.json` `env` block). **Workflow subagents inherit it** (verified empirically) — so
+  agents run `npx n8nac` BARE and hit the right (instance + project); prompt-injected `--env` flags were
+  tried and dropped unreliably, so agent defs now FORBID `--env`/`env list`/env-probing. Different
+  sessions target different projects simultaneously — never a global `env use` switch. An n8nac env =
+  (instance host + n8n project). `setup-check`/`report-session-env` resolve via `env status` (honors
+  `N8NAC_ENVIRONMENT`), not `workspace status` (which only sees the global active env).
+- Fan-out reliability: a **retry-once pass** catches subagents that finish without emitting their
+  StructuredOutput result (idempotent ops like `pull` re-run safely) — prevents false under-reporting.
+- **`scripts/check-mirror-drift.sh`** (SessionStart) — emits `AUTOPILOT_ACTION_REQUIRED:
+  /n8n-autopilot:mirror-sync` only when remote-only workflows exist (no blind every-session pull).
+- `init-repo` step 6.5 runs `mirror-sync` after schema pull so a fresh repo starts as a full mirror.
+
+## [4.7.0] — 2026-05-29
+
+### Added — idempotent CLAUDE.md section anchoring for existing repos
+
+`init-repo` previously only wrote a templated `CLAUDE.md` for brand-new repos; an existing repo with
+its own `CLAUDE.md` was skipped, so the autopilot guidance never landed there.
+
+- New `skills/init-repo/scripts/ensure-claude-section.js` — idempotently anchors a marker-delimited
+  n8n-autopilot section (`<!-- n8n-autopilot:start -->`…`<!-- n8n-autopilot:end -->`) into `CLAUDE.md`:
+  creates the file if missing, refreshes the block in place if markers exist (no duplication),
+  appends to a foreign CLAUDE.md, and SKIPs a full-template CLAUDE.md (sentinel) unless `--force`.
+  Content outside the markers is never touched.
+- New section template `skills/init-repo/assets/templates/CLAUDE-section.md` — entry points,
+  SessionStart auto-reactions, design-quality rules, pattern-skill pointers, NEVER rules.
+- `init-repo.sh` runs it after scaffolding (non-fatal on failure). Also runnable standalone on any
+  existing repo: `node …/ensure-claude-section.js --workspace .`.
+
+## [4.6.0] — 2026-05-29
+
+### Added — workflow-pattern guidance skills (org-learned, concrete examples)
+
+Distilled from real production memories + debates into reusable, example-driven guidance.
+
+- **`n8n-orchestration-patterns`** (new auto-activated skill) — fan-out / fan-in and parallel
+  sub-workflow execution. Covers the branch-split trap (`executionOrder: v1` runs serially), Pattern A
+  (`executionOrder: v0` layer interleaving), **Pattern B = Wait-OFF + DataTable fan-in (recommended)**,
+  Pattern B2 (resumeUrl, veto grey-zone), Pattern C (queue mode), synchronous-batch + fast-return
+  webhook, and the error-output-not-`continueOnFail` rule. With TS config examples.
+- **`n8n-structured-extraction`** (new auto-activated skill) — LLM extraction/classification via a
+  real JSON schema using `informationExtractor` / `textClassifier`, never an AI-Agent "return JSON"
+  prompt. Documents the reasoning-model failure modes (`{"output":...}` wrap, enum/umlaut violations)
+  and a full Information-Extractor schema example (typed + described fields, ASCII-safe enums).
+- **`data-tables`** extended — the workflow-node **upsert shape** (3-part requirement:
+  `filters.conditions` keyName+condition+keyValue **and** `matchingColumns`) + usage patterns
+  (fan-in store, idempotency/dedup via upsert, error rows, cross-run state, count-race safety).
+
+## [4.5.0] — 2026-05-29
+
+### Added — Design-quality learnings + `/feedback` session-review-redact-push flow
+
+A second analysis dimension — workflow **design
+anti-patterns**, which the operational-friction taxonomy missed. Surfaced after the user asked about
+Code-node overuse and memory limits; both confirmed real (calibrated): Code nodes ~2.5:1 over native
+conditional nodes, and a real n8n-pod **OOM** from Code nodes iterating >10k Postgres rows.
+
+- **`/n8n-autopilot:feedback` is now a one-shot review flow** (default action): resolves the session
+  transcript (`latest-transcript.js`), summarizes auto-captured signals, measures file-level design
+  quality from `workflows/*.workflow.ts` (Code-vs-native, missing descriptions, overlapping node
+  positions), does a qualitative pass, **LLM-redacts to neutral insights**, runs a deterministic PII
+  gate, shows the result, and pushes. `interview` / `show` / `sync` remain as sub-actions.
+- **Deterministic PII gate** `scripts/redact-check.js` — allowlist (known keys + signal names,
+  numeric values, basename-only `repoLabel`) + denylist (email / abs-path / URL / long-digit / IBAN /
+  token / configured customer names via `N8N_AUTOPILOT_PII_NAMES`). `sync.sh` runs it as a hard
+  gate before every push (defense-in-depth on top of the LLM redaction).
+- **`workflow-reviewer` checklist 10 → 15 points** — adds native-first (prefer IF/Switch/Filter/Set
+  over Code), no silent failures (`continueOnFail`/`onError:continue`), memory/large-data (OOM),
+  descriptions present, no overlapping nodes.
+- **`capture-feedback.sh`** adds two transcript-detectable design signals: `memory_oom`,
+  `continue_on_fail`.
+- **`n8n-code-javascript` guidance** — new "When NOT to use a Code node (native-first)" section +
+  OOM-on-large-data caveat; stopped listing "filtering" as a default Code use-case.
+
+## [4.4.0] — 2026-05-29
+
+### Added — `/n8n-autopilot:test-manual` + friction fixes from production-run analysis
+
+Acts on the HIGH/MED improvement candidates surfaced by the v4.3.0 feedback-loop run analysis.
+Conservative, additive fixes — the push-gate BLOCKING logic is unchanged.
+
+- **New skill `/n8n-autopilot:test-manual <workflowId>`** — packages the non-HTTP-trigger
+  (schedule/manual/errorTrigger) test detour (the #1 friction class, `non_http_test`=760) into one
+  flow: resolves the n8n UI URL via `workflow present`, waits for the user-reported execution-id,
+  then inspects the run via `execution get --include-data`. Read-only against the instance. Wired
+  into `deploy` step 6 and CLAUDE.md.
+- **Conflict-resolve churn reduced** (`conflict_resolve`=688, biggest friction) — push-gate BLOCKED
+  messages and `deploy` step 3 now include a "back up local before pull" recipe (`cp <file>
+  <file>.local-bak` → pull → diff → re-apply as a patch), so a local edit is re-applied as a small
+  diff instead of being re-typed after `pull` overwrites it.
+- **Validation guidance** (`validate_fail`=577) — `deploy` step 2 now points to the
+  `n8n-validation-expert` guidance skill when validation fails (n8nac's validator text is terse and
+  upstream-owned).
+
+### Fixed
+
+- `deploy` step 6 referenced a non-existent "step 9" for the non-HTTP manual-execution notice; now
+  points to the new `/n8n-autopilot:test-manual` skill.
+
+## [4.3.0] — 2026-05-28
+
+### Added — Feedback Loop (SessionEnd capture + `/n8n-autopilot:feedback` skill + central GitHub sink)
+
+A standardized way for the plugin to learn from real-world usage, grounded in an exhaustive analysis
+of 33 Claude Code sessions from a real consumer repo.
+
+- **Auto-capture** — new `SessionEnd` hook `scripts/capture-feedback.sh` silently extracts NON-PII
+  friction signal counts from the session transcript (anchored taxonomy: `non_http_test`,
+  `conflict_resolve`, `validate_fail`, `mcptrigger_detour`, `schema_gap`, `tool_error`, …) and
+  appends one `kind:"event"` NDJSON record to `.n8n-autopilot/feedback/events.ndjson` in the consumer
+  repo (gitignored). Fire-and-forget; never blocks shutdown; stores only counts + repo basename.
+- **Interactive feedback** — new skill `/n8n-autopilot:feedback` runs a short process-feedback
+  interview (questions derived from the top friction classes) → `process.ndjson`. `show` lists
+  pending records; `sync` pushes everything centrally.
+- **Central sink** — `sync` creates ONE labelled GitHub issue on `neurawork-git/n8n-autopilot-internal`
+  via `gh issue create` (single transport path, no fallback). Consent-gated: every record is shown
+  and a PII warning is given before pushing. A live feedback web server is a documented TODO
+.
+- **Nudge** — new `SessionStart` probe `scripts/check-feedback-pending.sh` emits an `INFO:` line
+  (never `AUTOPILOT_ACTION_REQUIRED:`) when unsynced records exist.
+- **Analysis finding** — the historical assumption that push-gate blocks were a top pain is NOT
+  supported: `push_gate_block` is unobservable in historical transcripts (reclassified live-only).
+  Bare-keyword grep was found to massively overcount (`"BLOCKED"`→`blockedBy` JSON, `"CONFLICT"`→SQL
+  `ON CONFLICT`), so all heuristics are anchored to emitted strings.
+
 ## [4.2.2] — 2026-05-20
 
 ### Fixed — Skill frontmatter YAML parse errors + n8nac >= 2.2 quiet-skip in community-node check
 
-Two bugs found via `claude --debug` log inspection in the Falkensteg consumer repo:
+Two bugs found via `claude --debug` log inspection in a real consumer repo:
 
 **1. YAML parse failure in two skills** — Claude Code's loader reported `[WARN] Failed to parse YAML frontmatter` for `skills/n8nac-cheatsheet/SKILL.md` and `skills/build-workflow/SKILL.md`. Both skills were silently dropped from the session — only 14 of 16 plugin skills were loading. Root cause: an unquoted `description:` value contained `<word>: ` (e.g. "common workflows: lookup"), which js-yaml parses as a nested mapping. Fixed by wrapping both descriptions in quotes (single for one, double for the other due to embedded apostrophes / backticks) and replacing the inline colons with em-dashes where readability allowed.
 
@@ -25,7 +221,7 @@ No skill changes, no manifest changes beyond the version bump.
 Two SessionStart-hook scripts still resolved their working directory to `$CLAUDE_PLUGIN_ROOT` (the plugin install dir under `~/.claude/plugins/cache/…`) instead of `$PWD` (the consumer repo where Claude Code is actually running). v3.7.1 fixed this for `check-credential-freshness.sh` and `check-workspace-migration.sh` but missed two others; this patch closes the gap.
 
 - `scripts/check-schema-versions.sh` — now reads `schemas/_index.json` from the consumer workspace. Previously checked the plugin's own cache which never reflects the consumer's installed nodes.
-- `scripts/check-installed-nodes.sh` — now reads `schemas/_index.json` and `.env` from the consumer workspace. This explains the long-standing "ℹ️ check-installed-nodes: .env not found — skipping." that Falkensteg saw on every session despite having a populated `.env` in its repo root.
+- `scripts/check-installed-nodes.sh` — now reads `schemas/_index.json` and `.env` from the consumer workspace. This explains the long-standing "ℹ️ check-installed-nodes: .env not found — skipping." that the consumer repo saw on every session despite having a populated `.env` in its repo root.
 
 Both files now follow the pattern documented in `check-credential-freshness.sh`: `REPO_DIR="$PWD"` with a comment block clarifying why `$CLAUDE_PLUGIN_ROOT` is the wrong primitive for workspace lookups.
 
@@ -53,7 +249,7 @@ CLAUDE.md now has a "Knowledge skills" block above the cheat-sheet pointing at b
 
 ### Added — Multi-project awareness + push-gate (drift protection) + cheat-sheet
 
-Three structural defects fixed after the Falkensteg session showed Claude fishing through `--help`, inventing CLI subcommands (`skills list-credentials`), and injecting cross-project credential IDs:
+Three structural defects fixed after a real session showed Claude fishing through `--help`, inventing CLI subcommands (`skills list-credentials`), and injecting cross-project credential IDs:
 
 **1. New skill `/n8n-autopilot:find-credential`** (`skills/find-credential/`)
 - Search live credentials by name pattern, **scoped to the workspace-pinned project by default**.
@@ -65,7 +261,7 @@ Three structural defects fixed after the Falkensteg session showed Claude fishin
 **2. New skill `/n8n-autopilot:find-project`** (`skills/find-project/`)
 - Enumerates every n8n project visible on the active instance (derived from `credential list --json` → `shared[].name` / `shared[].id` — works without the Enterprise `/api/v1/projects` endpoint).
 - Marks the workspace-pinned project, prints the exact `workspace set-project` command to switch.
-- Falkensteg shipped seven projects; agents had no way to see the others before this.
+- One audited instance shipped seven projects; agents had no way to see the others before this.
 
 **3. Push-gate hook (`scripts/push-gate.sh`)** — wired into `hooks.json` PreToolUse(Bash)
 - BLOCKS `npx n8nac push <file>` when `n8nac list --search <id>` returns status `CONFLICT` / `MODIFIED_BOTH` / `DIVERGED` / `REMOTE_ONLY`. Hook auto-runs `n8nac fetch <id>` first, so the verdict is always against fresh remote state.
@@ -85,7 +281,7 @@ Three structural defects fixed after the Falkensteg session showed Claude fishin
 
 **6. `check-mcps` skill + `setup-check.sh` Section 6** now print the project visibility table on every health check / SessionStart, so multi-project state is visible without an explicit query.
 
-**Why this matters (Falkensteg incident pattern):** workspace pinned to project A, instance has projects A–G, `n8nac credential list --json` returns creds from all visible projects. Agent matches by name only → injects credential ID from project F into a workflow in project A → push succeeds, runtime fails with "credential not accessible". After 4.2.0: `find-credential` shows only project A by default, `sync-credentials --fix-workflows` will not rewrite cross-project IDs, push-gate refuses to silently overwrite remote changes.
+**Why this matters (real incident pattern):** workspace pinned to project A, instance has projects A–G, `n8nac credential list --json` returns creds from all visible projects. Agent matches by name only → injects credential ID from project F into a workflow in project A → push succeeds, runtime fails with "credential not accessible". After 4.2.0: `find-credential` shows only project A by default, `sync-credentials --fix-workflows` will not rewrite cross-project IDs, push-gate refuses to silently overwrite remote changes.
 
 ## [4.1.0] — 2026-05-19
 
@@ -112,7 +308,7 @@ Per the skill-creator norm (`skill-name/scripts/`), skill-specific executable co
 
 All three SKILL.md bodies are now thin pointers (~50 lines each) — when to invoke, which flag does what, where the scripts live. No executable code in the skill prose.
 
-Verified end-to-end against Falkensteg/: pull-schemas pulled 16 core schemas, inventory rendered the report, sync-credentials --fix-workflows --dry-run correctly detected 16 stale credential references plus 5 orphans.
+Verified end-to-end against a real consumer repo: pull-schemas pulled 16 core schemas, inventory rendered the report, sync-credentials --fix-workflows --dry-run correctly detected 16 stale credential references plus 5 orphans.
 
 ## [4.0.0] — 2026-05-19
 

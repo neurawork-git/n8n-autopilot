@@ -58,3 +58,9 @@ n8nac-skills.cmd
 
 # Internal strategy notes — not part of the public plugin distribution
 docs/STRATEGIC_ANALYSIS.md
+
+# Autopilot feedback runtime store (may contain repo-specific detail — never commit; PII risk)
+.n8n-autopilot/
+
+# Transient harness lock
+.claude/scheduled_tasks.lock

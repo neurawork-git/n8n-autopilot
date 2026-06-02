@@ -38,11 +38,34 @@ return processed;
 
 ---
 
+## When NOT to use a Code node (native-first)
+
+Reach for a native node before writing JavaScript — Code nodes are harder to read, review, and they
+run V8 in-process (OOM risk on large data, see below). In a real production audit, Code nodes
+outnumbered native conditional nodes ~2.5:1 — much of it avoidable:
+
+| If you are doing… | Use this native node, NOT Code |
+|---|---|
+| Branching on a condition | `IF` (2 branches) / `Switch` (n branches) |
+| Dropping items by a rule | `Filter` |
+| Setting / renaming / mapping fields | `Set` (Edit Fields) |
+| Merging / combining streams | `Merge` |
+| Aggregating into one item | `Aggregate` / `Summarize` |
+| Looping over large batches | `Loop Over Items (SplitInBatches)` |
+
+> **Memory / OOM (real production incident):** a Code node that loads or iterates a large dataset —
+> especially a full DB result set (>~10k rows), binary, or file contents — can spike the V8 heap
+> (~3 GB cap) and **crash the n8n pod (OOM)**. For large data: page/limit at the source, process in
+> `SplitInBatches`, or push the work into the database/native node instead of materializing it all in JS.
+
+Use a Code node when the logic genuinely has no native equivalent (custom parsing, multi-field
+computation, shaping a bespoke payload).
+
 ## Mode Selection Guide
 
 ### Run Once for All Items (Recommended - Default)
 
-**Use for:** 95% of use cases — aggregation, filtering, batch processing, transformations
+**Use for:** aggregation, batch processing, transformations that have no native-node equivalent
 
 ```javascript
 const allItems = $input.all();

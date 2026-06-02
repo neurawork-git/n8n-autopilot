@@ -98,9 +98,14 @@ case "$STATUS" in
 been modified on n8n since the last local pull. Pushing now would silently
 overwrite those remote changes.
 
-Reconcile first:
-  npx n8nac pull $WF_ID                  # remote wins (recommended default)
-  npx n8nac resolve $WF_ID                # interactive resolution
+Reconcile WITHOUT losing your local edit (avoids the re-type churn):
+  cp "$PUSH_PATH" "$PUSH_PATH.local-bak"  # 1. keep your local change
+  npx n8nac pull $WF_ID                    # 2. remote wins, sync local
+  # 3. diff $PUSH_PATH.local-bak against the pulled file and re-apply your
+  #    intended change as a small patch, then:  npx n8nac push $PUSH_PATH --verify
+
+Alternatives:
+  npx n8nac resolve $WF_ID                 # interactive resolution
 
 To force local-wins anyway (destroys remote changes):
   N8N_AUTOPILOT_ALLOW_LOCAL_WINS=1 <re-run your push command>
@@ -112,7 +117,9 @@ EOF
 [push-gate] BLOCKED — workflow $WF_ID exists ONLY on the remote.
 
 The local file references an existing remote workflow, but n8nac has no local
-tracking entry. Pull first so the local file reflects current remote state:
+tracking entry. Pull first so the local file reflects current remote state
+(back up your local edit first so you can re-apply it):
+  cp "$PUSH_PATH" "$PUSH_PATH.local-bak"
   npx n8nac pull $WF_ID
 
 Override (rare — only if you intend to fully replace the remote with local):

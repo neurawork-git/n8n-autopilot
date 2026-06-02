@@ -5,6 +5,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/report-session-env.sh 2>&1 || true",
+            "timeout": 10
+          },
+          {
+            "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/setup-check.sh 2>&1 || true",
             "timeout": 15
           },
@@ -20,8 +25,29 @@
           },
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-mirror-drift.sh --quiet 2>&1 || true",
+            "timeout": 15
+          },
+          {
+            "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-workspace-migration.sh --quiet 2>&1 || true",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-feedback-pending.sh --quiet 2>&1 || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/capture-feedback.sh 2>&1 || true",
+            "timeout": 10
           }
         ]
       }
@@ -33,6 +59,11 @@
           {
             "type": "command",
             "command": "INPUT=\"$CLAUDE_TOOL_INPUT\"; if echo \"$INPUT\" | grep -qE '(curl|wget).*(/api/v1|n8n\\.cloud|n8n\\.io)' 2>/dev/null; then if echo \"$INPUT\" | grep -qE '/api/v1/data-tables' 2>/dev/null; then : ; else echo 'BLOCKED: Use n8nac CLI instead of direct API calls via curl/wget. (Carve-out: /api/v1/data-tables is allowed — see /n8n-autopilot:data-tables skill.)' >&2; exit 2; fi; fi",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "INPUT=\"$CLAUDE_TOOL_INPUT\"; bash ${CLAUDE_PLUGIN_ROOT}/scripts/enforce-env.sh \"$INPUT\"",
             "timeout": 5
           },
           {

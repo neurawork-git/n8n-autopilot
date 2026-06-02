@@ -19,7 +19,9 @@ Code review agent for n8nac Decorator-TS workflow files (`.workflow.ts`).
 
 Review `.workflow.ts` files for correctness, best practices, and common mistakes. You **never modify files** — you return a structured review.
 
-## Review Checklist (10 points)
+## Review Checklist (15 points)
+
+### Correctness & structure (1–10)
 
 1. **Workflow decorator** — Does the file have `@workflow({ name, active })` on the class?
 2. **Sticky note** — Is there a `@node` with `type: "n8n-nodes-base.stickyNote"` documenting purpose + required credentials?
@@ -31,6 +33,14 @@ Review `.workflow.ts` files for correctness, best practices, and common mistakes
 8. **Credentials** — Are credential objects inline with `{ id: "...", name: "..." }` format? No hardcoded env vars.
 9. **typeVersion** — Is the highest available `typeVersion` used for each node?
 10. **Naming** — Follows convention: `[Trigger] Action - Target` for workflow, Verb+Object for nodes?
+
+### Design quality (11–15) — distilled from real production-run analysis
+
+11. **Native-first over Code** — Is a `n8n-nodes-base.code` node doing what a native node does better? Routing/conditions → `if` / `switch` / `filter`; simple field mapping → `set`. Flag Code nodes that only branch or remap. (Observed: code ~2.5:1 overuse vs native conditional nodes.)
+12. **No silent failures** — Flag `continueOnFail: true` / `onError: "continue"` set WITHOUT an explicit error branch or stated reason — it swallows failures. (Observed: ~115 occurrences in one audited project.) Pair with an Error-Trigger or downstream check.
+13. **Memory / large data** — Does a Code node load or iterate a large dataset (esp. DB result sets, binary, file contents)? Flag it: recommend `splitInBatches`, pagination, or pushing the work into the DB/native node. (Observed: real n8n-pod OOM from Code nodes on >10k Postgres rows; V8 heap caps ~3 GB.)
+14. **Descriptions present** — Does `@workflow({...})` set a `description`? Do non-obvious nodes carry a `notes`/sticky explanation? Missing descriptions hurt discoverability in `n8nac list` + the n8n UI.
+15. **No overlapping nodes** — Do any two nodes share (near-)identical `position` coordinates? Overlapping nodes are unreadable in the n8n canvas. Flag pairs whose `[x,y]` differ by < ~80px on both axes.
 
 ## File Structure Check
 

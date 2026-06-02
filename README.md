@@ -134,6 +134,19 @@ Why is my IF node operator validation failing?
 
 The plugin's guidance skills activate automatically — JavaScript/Python Code nodes, expression syntax, validation errors, workflow patterns.
 
+### Give feedback on the autopilot experience
+
+```
+/n8n-autopilot:feedback
+```
+
+The plugin learns from real usage. A `SessionEnd` hook silently records non-PII friction signal
+counts (conflict-resolve churn, non-HTTP test detours, validation loops, …) to a gitignored local
+store; a `SessionStart` nudge reminds you when feedback is pending. `/n8n-autopilot:feedback` runs a
+short interview, and `/n8n-autopilot:feedback sync` pushes everything centrally as one GitHub issue
+(consent-gated — you review every record first). Captured records hold only counts + the repo name,
+never customer data.
+
 ---
 
 ## How the Build Pipeline Works
@@ -184,6 +197,8 @@ No n8n API needed         Decorator-TS format,            n8n API required
 | `/n8n-autopilot:inventory` | Aggregate node-type / LLM / credential usage from local workflows into `docs/INVENTORY.md` |
 | `/n8n-autopilot:data-tables` | Manage DataTable resources (tables, columns, rows) via the n8n REST API (curl carve-out) |
 | `/n8n-autopilot:check-mcps` | Check the n8nac MCP connection (infrastructure + tool registration) |
+| `/n8n-autopilot:test-manual <id>` | Test a non-HTTP-trigger workflow (schedule/manual/errorTrigger): resolves the UI URL, waits for the execution-id, inspects the run |
+| `/n8n-autopilot:feedback [show\|sync]` | Capture autopilot process feedback (interview); `sync` pushes pending records centrally as a GitHub issue (consent-gated) |
 
 ### Guidance Skills (auto-activated, also directly invocable)
 
@@ -194,6 +209,8 @@ No n8n API needed         Decorator-TS format,            n8n API required
 | `n8n-workflow-patterns` | 5 patterns: webhook processing, HTTP API, database ops, AI agent, scheduled tasks |
 | `n8n-node-configuration` | Operation-aware config, property dependencies, required fields by node type |
 | `n8n-validation-expert` | Error types, false positives, expression validation, auto-sanitization, bulk fixes |
+| `n8n-orchestration-patterns` | Fan-out/fan-in, parallel sub-workflows (the branch-split trap, `executionOrder: v0`, DataTable fan-in), batch + fast-return webhook |
+| `n8n-structured-extraction` | LLM extraction/classification via a real JSON schema (Information Extractor / Text Classifier), not Agent+prompt |
 
 **Code nodes:**
 

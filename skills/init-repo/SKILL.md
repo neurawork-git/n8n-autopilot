@@ -39,7 +39,19 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/init-repo/scripts/init-repo.sh" "<target-dir>
 
 Creates `workflows/`, `schemas/nodes/`, `data/`, `docs/` and writes templated `CLAUDE.md`, `README.md`, `.gitignore`, `.env.example`, runs `git init`. Idempotent. No `.mcp.json` is scaffolded — n8n-autopilot 4.x is CLI-only.
 
-**Output to user:** Summarize what was written / skipped.
+It then runs `ensure-claude-section.js` to **anchor the n8n-autopilot section into `CLAUDE.md`**
+(idempotent): a brand-new repo already has the full template (the script SKIPs, no duplicate); an
+**existing repo with its own CLAUDE.md** gets the marked section
+(`<!-- n8n-autopilot:start -->`…`<!-- n8n-autopilot:end -->`) appended, and re-runs only refresh that
+block — repo-specific content outside the markers is never touched.
+
+**Output to user:** Summarize what was written / skipped / appended.
+
+> **Anchor into an existing repo without full scaffolding:** to only add/refresh the autopilot section
+> in a repo that already has its own CLAUDE.md (e.g. an established customer repo), run just:
+> ```bash
+> node "${CLAUDE_PLUGIN_ROOT}/skills/init-repo/scripts/ensure-claude-section.js" --workspace .
+> ```
 
 ### 2. Collect connection info
 
@@ -112,6 +124,14 @@ Unless `--skip-schemas`:
 
 Schemas land in `schemas/nodes/`, index in `schemas/_index.json`. Both gitignored.
 
+### 6.5 Mirror remote workflows
+
+Pull every workflow that already exists in the bound project so the repo starts as a **complete local mirror** of the instance. This is what makes `/n8n-autopilot:build-workflow-v2`'s local-first edit flow valid, and what the SessionStart drift probe (`check-mirror-drift.sh`) keeps honest afterwards.
+
+→ Invoke skill `/n8n-autopilot:mirror-sync` (run it inline — same session). It discovers remote-only workflows and fan-out-pulls them.
+
+A brand-new/empty project pulls nothing (mirror already complete) — that's fine. Failures are non-fatal: report them, the user can re-run `/n8n-autopilot:mirror-sync` or `npx n8nac pull <id>` manually.
+
 ### 7. Verify
 
 ```bash
@@ -151,7 +171,9 @@ Never delete files the user might have written between steps.
 
 ## Notes
 
-- Skill is idempotent at the file-scaffold level (Step 1) — never overwrites existing files.
+- Skill is idempotent at the file-scaffold level (Step 1) — never overwrites existing files. The
+  CLAUDE.md autopilot section is marker-delimited and refreshed in place (no duplication); content
+  outside the markers is preserved.
 - Steps 3–7 will re-run cleanly on a partially bootstrapped repo.
 - Templates live in `${CLAUDE_PLUGIN_ROOT}/skills/init-repo/assets/templates/` (colocated with the skill per skill-creator convention).
 - For multi-environment setups (one repo, many n8n tenants), use `npx n8nac env add <name>` per environment after this skill, then `npx n8nac env use <name>` to switch.

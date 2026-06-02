@@ -148,6 +148,47 @@ For node-level discovery:
 npx n8nac skills node-info dataTable --json
 ```
 
+### Upsert node shape (THREE parts — all required)
+
+A workflow-node upsert needs `filters.conditions` (with `keyName` **+** `condition` **+** `keyValue`)
+**AND** `matchingColumns`. Miss any one and the upsert matches nothing and always inserts (→ duplicates).
+n8nac validation is authoritative here.
+
+```typescript
+{
+  operation: 'upsert',
+  dataTableId: { __rl: true, value: '<table-id>', mode: 'id' },
+  filters: {
+    conditions: [{
+      keyName:  'matching_column',          // (1) which column to match
+      condition: 'eq',                       // (2) MUST be set
+      keyValue: '={{ $json.matching_column }}', // (3) MUST be set
+    }],
+  },
+  columns: {
+    mappingMode: 'autoMapInputData',
+    value: {},
+    matchingColumns: ['matching_column'],    // MUST mirror the condition key
+    schema: [ /* all columns with correct `type` (match LLM/extractor output types) */ ],
+  },
+}
+```
+
+### Usage patterns (when to reach for a DataTable)
+
+- **Fan-in store for parallel sub-workflows** — each async sub-workflow writes a result row
+  (`batch_id`, `item_idx`, `status`, `result`); the parent polls `COUNT(*) WHERE batch_id=X` until it
+  reaches N, then reads + merges. The recommended fan-out/fan-in mechanism — see
+  `n8n-autopilot:n8n-orchestration-patterns` (Pattern B). Avoids webhook-between-workflows + HMAC pain.
+- **Idempotency / dedup** — on retries, **upsert on the natural key** (e.g. `(batch_id, item_idx)`)
+  instead of insert, so a re-run overwrites rather than duplicating.
+- **Error rows, not silent skips** — route a risky node's **error output** to a DataTable write with
+  `status: 'error'` so the fan-in count still completes and the failure is visible. Never
+  `continueOnFail: true` (masks silent failures).
+- **Cross-run state** — small dedup/seen-tables, processing cursors, last-seen timestamps. For large
+  datasets prefer the source DB (DataTables are not a data warehouse).
+- **Count-query races** — inserts are atomic per row; append-only `COUNT` is safe without locking.
+
 ## Safety
 
 - **Destructive** ops (`DELETE table`, `DELETE rows` without dry-run) — confirm with the user first

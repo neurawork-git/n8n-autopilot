@@ -107,6 +107,12 @@ render_template "$TARGET_ABS/README.md"      "$TEMPLATES_DIR/README.md"
 write_file      "$TARGET_ABS/.gitignore"     "$TEMPLATES_DIR/gitignore"
 write_file      "$TARGET_ABS/.env.example"   "$TEMPLATES_DIR/env.example"
 
+# ── 2b. Ensure the n8n-autopilot section is anchored in CLAUDE.md (idempotent) ─
+# New repo → full template already written (sentinel) → script SKIPs (no dupe).
+# Existing/foreign CLAUDE.md → script appends/updates the marked section.
+node "$SKILL_ROOT/scripts/ensure-claude-section.js" --workspace "$TARGET_ABS" \
+  || echo "WARN   ensure-claude-section failed (non-fatal) — CLAUDE.md not modified"
+
 # ── 3. git init ──────────────────────────────────────────────────────────────
 if [ "$NO_GIT" -eq 0 ]; then
   if [ -d "$TARGET_ABS/.git" ]; then

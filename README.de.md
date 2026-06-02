@@ -134,6 +134,19 @@ Warum schlägt meine IF-Node-Operator-Validierung fehl?
 
 Die Knowledge-Skills aktivieren sich automatisch — JavaScript/Python Code-Nodes, Expression-Syntax, Validierungs-Fehler, Workflow-Patterns.
 
+### Feedback zur Autopilot-Erfahrung geben
+
+```
+/n8n-autopilot:feedback
+```
+
+Das Plugin lernt aus echter Nutzung. Ein `SessionEnd`-Hook erfasst still und ohne PII die Häufigkeit
+von Reibungssignalen (Konflikt-Auflösungs-Churn, Non-HTTP-Test-Umwege, Validierungs-Schleifen, …) in
+einen gitignorierten lokalen Speicher; ein `SessionStart`-Hinweis erinnert dich an ausstehendes
+Feedback. `/n8n-autopilot:feedback` führt ein kurzes Interview, `/n8n-autopilot:feedback sync` schiebt
+alles zentral als ein GitHub-Issue (mit Bestätigung — du prüfst vorher jeden Record). Erfasste Records
+enthalten nur Counts + den Repo-Namen, niemals Kundendaten.
+
 ---
 
 ## So funktioniert die Build-Pipeline
@@ -183,6 +196,8 @@ keine n8n-API nötig       Decorator-TS Format,            n8n-API erforderlich
 | `/n8n-autopilot:inventory` | Node-Typ- / LLM- / Credential-Nutzung aus lokalen Workflows in `docs/INVENTORY.md` aggregieren |
 | `/n8n-autopilot:data-tables` | DataTable-Ressourcen (Tabellen, Spalten, Zeilen) via n8n-REST-API verwalten (curl-Carve-out) |
 | `/n8n-autopilot:check-mcps` | n8nac-MCP-Verbindung prüfen (Infrastruktur + Tool-Registrierung) |
+| `/n8n-autopilot:test-manual <id>` | Non-HTTP-Trigger-Workflow testen (schedule/manual/errorTrigger): löst die UI-URL auf, wartet auf die execution-id, inspiziert den Run |
+| `/n8n-autopilot:feedback [show\|sync]` | Autopilot-Prozess-Feedback erfassen (Interview); `sync` schiebt ausstehende Records zentral als GitHub-Issue (mit Bestätigung) |
 
 ### Knowledge-Skills (auto-aktiviert, direkt aufrufbar)
 
@@ -193,6 +208,8 @@ keine n8n-API nötig       Decorator-TS Format,            n8n-API erforderlich
 | `n8n-workflow-patterns` | 5 Patterns: Webhook-Processing, HTTP-API, Datenbank-Ops, AI-Agent, Scheduled Tasks |
 | `n8n-node-configuration` | Operation-aware Config, Property-Dependencies, Pflichtfelder pro Node-Typ |
 | `n8n-validation-expert` | Fehlertypen, False Positives, Expression-Validierung, Auto-Sanitisierung, Bulk-Fixes |
+| `n8n-orchestration-patterns` | Fan-out/Fan-in, parallele Sub-Workflows (Branch-Split-Falle, `executionOrder: v0`, DataTable-Fan-In), Batch + Fast-Return-Webhook |
+| `n8n-structured-extraction` | LLM-Extraktion/Klassifikation via echtem JSON-Schema (Information Extractor / Text Classifier), nicht Agent+Prompt |
 
 **Code-Nodes:**
 

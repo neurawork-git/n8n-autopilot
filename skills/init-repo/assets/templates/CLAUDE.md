@@ -35,7 +35,17 @@ SessionStart hooks emit `AUTOPILOT_ACTION_REQUIRED: <slash-command>` lines when 
 
 Hard rule: parse the literal slash-command after `AUTOPILOT_ACTION_REQUIRED:` and execute it. Do not paraphrase, do not skip the `--packages` list, do not bundle multiple signals into one call.
 
-Signals NOT auto-triggered (informational only): `check-inventory-freshness.sh` (`INFO:` prefix — surface to user, do not auto-regenerate; inventory regeneration is expensive).
+Signals NOT auto-triggered (informational only — surface to user, never auto-run):
+- `check-inventory-freshness.sh` (`INFO:` prefix — do not auto-regenerate; inventory regeneration is expensive).
+- `check-feedback-pending.sh` (`INFO:` prefix — unsynced autopilot feedback exists; offer `/n8n-autopilot:feedback`, do not auto-run — feedback needs user consent).
+
+## Feedback Loop
+
+A SessionEnd hook (`capture-feedback.sh`) silently records NON-PII friction signal counts from each
+session to `.n8n-autopilot/feedback/events.ndjson` (gitignored). Run `/n8n-autopilot:feedback` to add
+process feedback (a short interview), and `/n8n-autopilot:feedback sync` to push everything centrally
+(creates a GitHub issue — explicit consent required). Auto-captured records carry only counts + the
+repo basename; never customer data.
 
 ## Repo Layout
 
