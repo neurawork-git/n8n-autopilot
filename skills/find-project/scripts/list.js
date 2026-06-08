@@ -28,22 +28,28 @@ for (let i = 0; i < argv.length; i++) {
   }
 }
 
+// MUST use `env status` (honours N8NAC_ENVIRONMENT / --env), NOT `workspace
+// status` — the latter is env-BLIND (reflects the shared global active env), so
+// the "active project" marker + host would be wrong when this session is pinned
+// elsewhere. The project list itself comes from `credential list` below, which is
+// already session-aware. See skills/session-env.
 let ws;
 try {
-  ws = JSON.parse(execSync('npx --yes n8nac workspace status --json', {
+  const out = execSync('npx --yes n8nac env status --json', {
     stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 4 * 1024 * 1024
-  }).toString());
+  }).toString();
+  ws = JSON.parse(out.slice(out.indexOf('{')));
 } catch (e) {
-  console.error('ERROR: workspace not bound. Run: npx n8nac setup --mode connect-existing');
+  console.error('ERROR: no n8n environment resolved. Pin one: export N8NAC_ENVIRONMENT=<env> (or pass --env). List: npx n8nac env list --json');
   process.exit(1);
 }
 
-const activeProject = ws.activeEnvironment && ws.activeEnvironment.projectId
-  ? { id: ws.activeEnvironment.projectId, name: ws.activeEnvironment.projectName || '?' }
+const _r = ws.resolved || ws;
+const activeProject = (ws.projectId || _r.projectId)
+  ? { id: ws.projectId || _r.projectId, name: ws.projectName || _r.projectName || '?' }
   : null;
 
-const target = (ws.environmentTargets || []).find(t => t.id === (ws.activeEnvironment && ws.activeEnvironment.environmentTargetId)) || (ws.environmentTargets || [])[0];
-const instanceUrl = target ? target.url : '(unknown)';
+const instanceUrl = _r.host || (_r.instance && _r.instance.url) || (_r.environmentTarget && _r.environmentTarget.url) || '(unknown)';
 
 let creds;
 try {
@@ -110,8 +116,8 @@ if (rows.length === 0) {
 }
 
 console.log('');
-console.log('To switch the workspace to a different project:');
-console.log('  npx n8nac workspace set-project --project-name "<Name>"');
-console.log('  npx n8nac workspace set-project --project-id "<ID>"');
+console.log('To switch the active project on the current environment:');
+console.log('  npx n8nac env update <env> --project-name "<Name>"');
+console.log('  npx n8nac env update <env> --project-id "<ID>"');
 console.log('');
 console.log('After switching, re-run /n8n-autopilot:check-mcps to verify the new scope.');

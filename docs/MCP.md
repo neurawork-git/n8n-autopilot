@@ -158,18 +158,16 @@ npx n8nac execution get <executionId> --include-data      # full execution data
 
 ```bash
 npx n8nac env list                               # alle konfigurierten Environments
-npx n8nac env add <name>                         # neues Environment hinzufügen
+npx n8nac env add <name> --base-url <url> --workflows-path workflows  # neues Environment hinzufügen + binden
+printf '%s' "$N8N_API_KEY" | npx n8nac env auth set <name> --api-key-stdin  # API-Key für Environment setzen
 npx n8nac env use <name>                         # aktives Environment wechseln (alias: env pin)
-npx n8nac env update <name>                      # Environment-Felder ändern
+npx n8nac env update <name> --project-name <p>  # Environment-Felder ändern (z. B. Projekt setzen)
 npx n8nac env remove <name>                      # Environment entfernen
 npx n8nac env status                             # aktuell aktives Environment anzeigen
-npx n8nac env auth                               # Auth-Konfiguration pro Environment
-npx n8nac workspace pin-instance                 # Workspace an Instanz binden
-npx n8nac workspace clear-instance               # Bindung lösen (fällt auf globales aktives Environment zurück)
 npx n8nac fetch <workflowId>                     # Remote-State explizit abrufen
 ```
 
-Nützlich für Teams, die zwischen dev/staging/prod-Environments wechseln. Das frühere `instance`-Vokabular (v1.x) ist in 2.x abgelöst — `instance-target` ist nur noch als Compat-Layer vorhanden, neue Setups sollten `env` nutzen.
+Nützlich für Teams, die zwischen dev/staging/prod-Environments wechseln. Ab n8nac 2.3.0 ist `workspace` vollständig read-only (`workspace status` / `workspace get` bleiben erhalten). Alle Mutations (Instanz-Binding, Projekt, Sync-Ordner) erfolgen ausschließlich über `env add` / `env update`. Die früheren Befehle `workspace pin-instance`, `workspace set-project`, `workspace set-sync-folder` sowie `instance-target` sind entfernt.
 
 ### n8nac CLI — AI-Kontext (v1.5+)
 

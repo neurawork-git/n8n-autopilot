@@ -51,15 +51,21 @@ if (!fs.existsSync(wfDir)) {
 }
 
 // ── 0. Active project (default scope)
+// MUST use `env status` (honours N8NAC_ENVIRONMENT / --env), NOT `workspace
+// status` — the latter is env-BLIND (shared global active env). Since this step
+// decides which project's credentials get written into workflow files, an env-
+// blind scope would rewrite IDs against the WRONG project. See skills/session-env.
 let activeProject = null;
 try {
-  const ws = JSON.parse(execSync('npx --yes n8nac workspace status --json', {
+  const out = execSync('npx --yes n8nac env status --json', {
     cwd: workspace, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 4 * 1024 * 1024
-  }).toString());
-  if (ws.activeEnvironment && ws.activeEnvironment.projectId) {
-    activeProject = { id: ws.activeEnvironment.projectId, name: ws.activeEnvironment.projectName || '?' };
+  }).toString();
+  const ws = JSON.parse(out.slice(out.indexOf('{')));
+  const _r = ws.resolved || ws;
+  if (ws.projectId || _r.projectId) {
+    activeProject = { id: ws.projectId || _r.projectId, name: ws.projectName || _r.projectName || '?' };
   }
-} catch (e) { /* allowed: workspace not bound surfaces in next step */ }
+} catch (e) { /* allowed: env not resolved surfaces in next step */ }
 
 // ── 1. Live credentials
 let raw;

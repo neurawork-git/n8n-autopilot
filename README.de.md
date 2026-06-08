@@ -10,10 +10,10 @@
 
 **Ein Claude Code Plugin, das natürlichsprachliche Prompts in validierte, deployte n8n-Workflows verwandelt.**
 
-[![Version](https://img.shields.io/badge/version-4.1.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-4.10.0-blue.svg)](CHANGELOG.md)
 [![Lizenz: MIT](https://img.shields.io/badge/lizenz-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
-[![n8nac](https://img.shields.io/badge/n8nac-2.2.1%20(min%202.2.0)-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
+[![n8nac](https://img.shields.io/badge/n8nac-2.3.6%20(min%202.3.0)-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
 [![Claude Code](https://img.shields.io/badge/claude%20code-plugin-d97757.svg)](https://docs.claude.com/claude-code)
 
 ```
@@ -79,7 +79,7 @@ Claude führt automatisch eine 3-Phasen-Pipeline aus:
 /n8n-autopilot:init-repo mein-kunde
 ```
 
-Scaffolded das Verzeichnis-Layout, schreibt eine plugin-kompatible `CLAUDE.md`, fährt den n8nac-≥-2.2-Setup-Flow (`setup --mode connect-existing` + `workspace pin-instance` + `set-sync-folder`), zieht Node-Schemas und verifiziert — sodass der erste `build-workflow`-Aufruf sofort läuft.
+Scaffolded das Verzeichnis-Layout, schreibt eine plugin-kompatible `CLAUDE.md`, fährt den n8nac-≥-2.3-Setup-Flow (`env add` + `env auth set` + `env use`), zieht Node-Schemas und verifiziert — sodass der erste `build-workflow`-Aufruf sofort läuft.
 
 ### Bestehende Workflow-Datei deployen
 
@@ -226,7 +226,7 @@ keine n8n-API nötig       Decorator-TS Format,            n8n-API erforderlich
 ### Voraussetzungen
 
 - **Node.js 18+**
-- **n8nac ≥ 2.2.0** (auto-installiert via `npx`; das Plugin erzwingt die Mindestversion)
+- **n8nac ≥ 2.3.0** (auto-installiert via `npx`; das Plugin erzwingt die Mindestversion)
 - **Claude Code**
 - **Laufende n8n-Instanz** — lokal (`docker run -p 5678:5678 n8nio/n8n`) oder [n8n Cloud](https://app.n8n.cloud)
 - **n8n-API-Key** — n8n-UI → Settings → n8n API → Create API Key
@@ -266,25 +266,26 @@ claude plugin install n8n-as-code@n8nac-marketplace
 
 > **Keine `.mcp.json` nötig.** n8n-autopilot 4.x ist CLI-only — alle Schema-Recherche läuft über `npx n8nac skills …`. Der `mcp__n8n-as-code__*` Namespace aus älteren Versionen hatte nie eine stabile Upstream-Quelle (npm `n8nac mcp` ist kaputt; Etiennes Plugin liefert Skill-Knowledge, keinen MCP-Server).
 
-### 2. Workspace an deine n8n-Instanz binden (n8nac ≥ 2.2)
+### 2. Environment anlegen und aktivieren (n8nac ≥ 2.3)
 
-> **Bezugsversion n8nac: 2.2.1.** Das Plugin zielt auf das v2-Manager-Storage-Modell — Config liegt im User-Home (`~/n8nac-config.json` + `~/.n8n-manager/`), NICHT im Repo. Die alten Commands `init` / `init-auth` / `init-project` wurden in 2.2 entfernt.
+> **Bezugsversion n8nac: 2.3.6.** Ab 2.3.x ist `workspace` read-only (nur `status`/`get`). Alle Instanz- und Projekt-Konfiguration liegt auf `env`. Die alten Commands `init` / `init-auth` / `init-project` sowie alle schreibenden `workspace`-Mutators wurden entfernt.
 
 ```bash
-# 3a. Instanz registrieren (API-Key über stdin — niemals in der Shell-History)
-printf "%s" "$N8N_API_KEY" | npx n8nac setup --mode connect-existing \
-  --host "$N8N_API_URL" --api-key-stdin --json
+# 2a. Environment anlegen (Instanz-URL + Sync-Folder in einem Schritt)
+npx n8nac env add Prod --base-url "$N8N_API_URL" --workflows-path workflows
 
-# 3b. Workspace pinnen + Sync-Folder setzen
-npx n8nac workspace pin-instance --instance-id <id-aus-setup-output>
-npx n8nac workspace set-sync-folder workflows
+# 2b. API-Key hinterlegen (über stdin — niemals in der Shell-History)
+printf "%s" "$N8N_API_KEY" | npx n8nac env auth set Prod --api-key-stdin
 
-# 3c. Optional: Workspace auf ein bestimmtes n8n-Projekt eingrenzen
-npx n8nac workspace set-project --project-name Personal
-# oder: npx n8nac workspace set-project --project-id <id>
+# 2c. Environment aktivieren
+npx n8nac env use Prod
+
+# Optional: Workspace auf ein bestimmtes n8n-Projekt eingrenzen
+npx n8nac env update Prod --project-name Personal
+# oder beim Anlegen direkt: env add Prod ... --project-name Personal
 ```
 
-**Migration von n8nac < 2.2?** Einmal `npx n8nac workspace migrate-v1 --write` ausführen — verschiebt das alte `./n8nac-config.json` ins User-Home-Manager-Modell.
+**Migration von n8nac < 2.3?** Es gibt keinen `migrate`-Befehl mehr — der Workspace-Storage ist v4-nativ. Eine verwaiste `./n8nac-config.json` im Repo einfach manuell löschen; die Config liegt jetzt im User-Home (`~/n8nac-config.json` + `~/.n8n-manager/`).
 
 ### 3. Node-Schemas ziehen
 
@@ -302,7 +303,7 @@ Schemas werden nicht committed — sie sind instanz-spezifisch (Community-Nodes 
 
 (oder läuft automatisch via SessionStart-Hook beim nächsten Öffnen von Claude Code in diesem Repo)
 
-Prüft Node.js, n8nac-CLI-Version (min 2.2.0, Referenz 2.2.1), Workspace-Binding via `n8nac workspace status`, Live-n8n-Erreichbarkeit, Companion-Plugin aktiviert, Community-Node-Schema-Coverage. Fixe Fehler, bevor du Workflows baust.
+Prüft Node.js, n8nac-CLI-Version (min 2.3.0, Referenz 2.3.6), Workspace-Binding via `n8nac workspace status`, Live-n8n-Erreichbarkeit, Companion-Plugin aktiviert, Community-Node-Schema-Coverage. Fixe Fehler, bevor du Workflows baust.
 
 ---
 
@@ -375,13 +376,12 @@ npx n8nac skills examples search/list/info/download    # Community-Templates bro
 npx n8nac skills list --nodes --docs --guides          # verfügbare Referenzen enumerieren
 
 npx n8nac env list/add/update/pin/remove               # Workspace-Environments verwalten (mehrere n8n-Instanzen)
+npx n8nac env add <name> --base-url <url> --workflows-path workflows   # neues Environment anlegen
+npx n8nac env auth set <name> --api-key-stdin          # API-Key für ein Environment hinterlegen
 npx n8nac env use <name>                               # aktives Environment wechseln (Alias: env pin)
-npx n8nac workspace status --json                      # effektiver Workspace-Kontext (autoritativ)
-npx n8nac workspace pin-instance / clear-instance      # Workspace an eine bestimmte Instanz binden
-npx n8nac workspace set-sync-folder workflows          # n8nac sagen, wo *.workflow.ts liegen
-npx n8nac workspace set-project --project-name <n>     # Workspace auf ein n8n-Projekt eingrenzen
-npx n8nac workspace migrate-v1 --write                 # Legacy ./n8nac-config.json migrieren (n8nac < 2.2)
-npx n8nac setup --mode connect-existing --host <url> --api-key-stdin   # Erstkonfiguration
+npx n8nac env update <name> --project-name <n>         # Environment-Konfiguration aktualisieren (z. B. Projekt)
+npx n8nac workspace status --json                      # effektiver Workspace-Kontext (read-only, autoritativ)
+npx n8nac setup --mode connect-existing --host <url> --api-key-stdin   # Facade-Runtime-Modus wählen (optional)
 
 npx n8nac credentials recipes --json                   # Shared-Credential-Recipe-Katalog (openai-native, slack-oauth, …)
 npx n8nac credentials inventory --json                 # lokale Credential-Readiness-Inventory

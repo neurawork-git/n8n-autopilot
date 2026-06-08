@@ -11,8 +11,8 @@
 
 set -euo pipefail
 
-REFERENCE_N8NAC_VERSION="2.2.1"
-MIN_N8NAC_VERSION="2.2.0"
+REFERENCE_N8NAC_VERSION="2.3.6"
+MIN_N8NAC_VERSION="2.3.0"
 
 # n8n-autopilot 4.x is CLI-only — no MCP server is required or used. The
 # `mcp__n8n-as-code__*` namespace from older versions never had a stable
@@ -73,8 +73,9 @@ if [ -n "$INSTALLED_N8NAC" ]; then
   WS_JSON=$(npx --yes n8nac workspace status --json 2>/dev/null || echo "")
   if [ -z "$WS_JSON" ]; then
     echo "ERROR: n8nac workspace not initialized."
-    echo "  Run: npx n8nac setup --mode connect-existing --host <url> --api-key-stdin"
-    echo "  Then: npx n8nac workspace pin-instance --instance-id <id>"
+    echo "  Run: npx n8nac env add <name> --base-url <url> --workflows-path workflows"
+    echo "  Then: npx n8nac env auth set <name> --api-key-stdin"
+    echo "  Then: npx n8nac env use <name>"
     ERRORS=$((ERRORS + 1))
   else
     # workspace status returns two distinct JSON shapes in n8nac 2.2:
@@ -96,9 +97,9 @@ let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{
         echo "OK: workspace bound (${WS_STATE})"
         ;;
       dry-run|migration-required)
-        echo "WARN: workspace migration pending (status=${WS_STATE})."
-        echo "  Inspect: npx n8nac workspace migrate --json"
-        echo "  Apply:   npx n8nac workspace migrate --write"
+        echo "WARN: workspace status returned '${WS_STATE}' — the workspace storage is v4-native;"
+        echo "  there is no migrate command anymore. If a stray in-repo n8nac-config.json exists,"
+        echo "  delete it manually (config now lives in ~/n8nac-config.json + ~/.n8n-manager/)."
         WARNINGS=$((WARNINGS + 1))
         ;;
       *)

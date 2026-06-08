@@ -34,9 +34,9 @@ Projects visible on https://n8n.example.com:
   NhVwnjvOp5c5687N  Shared Project      21
   abcDEF1234567890  Marketing Ops       7
 
-To switch the workspace to a different project:
-  npx n8nac workspace set-project --project-name "Shared Project"
-  npx n8nac workspace set-project --project-id "NhVwnjvOp5c5687N"
+To switch the active project on the current environment:
+  npx n8nac env update <env> --project-name "Shared Project"
+  npx n8nac env update <env> --project-id "NhVwnjvOp5c5687N"
 
 After switching, re-run /n8n-autopilot:check-mcps to verify the new scope.
 ```

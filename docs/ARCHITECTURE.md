@@ -1,6 +1,6 @@
 # Architektur: n8n-autopilot Plugin
 
-*Stand: Mai 2026 — Plugin v3.6.1, n8nac ≥ 2.2.0.*
+*Stand: Mai 2026 — Plugin v3.6.1, n8nac ≥ 2.3.0.*
 
 ## Grundprinzip
 
@@ -47,7 +47,7 @@ Workflows sind **TypeScript Decorator-Format** (`.workflow.ts`). `n8nac` synchro
 | What | Used | Not used |
 |------|------|----------|
 | **n8nac MCP** | `search_n8n_knowledge`, `get_n8n_node_info`, `search_n8n_docs`, `search_n8n_workflow_examples`, `validate_n8n_workflow` | — |
-| **n8nac CLI** | `push (--verify)`, `pull`, `resolve`, `list`, `find`, `validate (--strict --json)`, `test (--data --query --prod)`, `test-plan`, `verify`, `fetch`, `convert`, `convert-batch`, `workflow activate/deactivate/credential-required/present`, `credential list/get/schema/create/delete`, `execution list/get`, `instance list/add/select/update/delete`, `switch`, `update-ai`, `skills node-info/node-schema/related/guides/list/examples` | — |
+| **n8nac CLI** | `push (--verify)`, `pull`, `resolve`, `list`, `find`, `validate (--strict --json)`, `test (--data --query --prod)`, `test-plan`, `verify`, `fetch`, `convert`, `convert-batch`, `workflow activate/deactivate/credential-required/present`, `credential list/get/schema/create/delete`, `execution list/get`, `env add/update/use/remove/list/status`, `env auth set`, `promote`, `update-ai`, `skills node-info/node-schema/related/guides/list/examples` | — |
 | **n8n REST API direct** | Only `/api/v1/data-tables` (curl carve-out, see `data-tables` skill) | Everything else — use n8nac |
 
 ## Workflow-Lifecycle (3 Phasen)
@@ -150,9 +150,12 @@ n8nac workflow credential-required <id>       → exit 0 = all credentials prese
 n8nac fetch <workflowId>                      → explicit remote-state fetch
 n8nac convert <file>                          → JSON ↔ TS conversion
 n8nac convert-batch <dir>                     → batch conversion of all workflows
-n8nac env list/add/update/pin/remove          → environment management (multiple n8n instances)
-n8nac env use <name>                          → switch active environment (alias: env pin)
-n8nac workspace pin-instance / clear-instance → bind workspace to a specific instance
+n8nac env add <name> --base-url <url> --workflows-path workflows  → add + bind new environment
+printf '%s' "$N8N_API_KEY" | n8nac env auth set <name> --api-key-stdin  → store API key for env
+n8nac env use <name>                          → activate environment (alias: env pin)
+n8nac env update <name> --project-name <p>   → set project scope on existing environment
+n8nac env list/update/remove/status          → further environment management
+n8nac promote [path] --from <env> --to <env> → cross-environment workflow promotion
 n8nac update-ai                               → regenerate AGENTS.md + AI context
 n8nac skills node-schema <name>               → quick TypeScript snippet for a node
 n8nac skills related <query>                  → find related nodes and docs
@@ -179,7 +182,7 @@ Only this single MCP is used. n8nac is the sole backend for all instance operati
 
 | Phase | Hook | What it does |
 |-------|------|--------------|
-| SessionStart | `setup-check.sh` | Verifies Node.js, n8nac min-version (≥ 2.2.0), `.mcp.json`, `n8nac-config.json`, n8n API reachability, community-node schema coverage, inventory freshness |
+| SessionStart | `setup-check.sh` | Verifies Node.js, n8nac min-version (≥ 2.3.0), `.mcp.json`, n8n API reachability, community-node schema coverage, inventory freshness |
 | SessionStart | `check-schema-versions.sh --quiet` | Compares cached schema `packageVersion` against latest npm — emits `AUTOPILOT_ACTION_REQUIRED: /n8n-autopilot:pull-schemas --packages …` when stale |
 | SessionStart | `check-credential-freshness.sh --quiet` | Scans `workflows/**/*.workflow.ts` for credential IDs that do not resolve on the live instance — emits `AUTOPILOT_ACTION_REQUIRED: /n8n-autopilot:sync-credentials` |
 | PreToolUse (Bash) | curl-block | Rejects direct `curl`/`wget` against `/api/v1`, `n8n.cloud`, `n8n.io` — **carve-out:** `/api/v1/data-tables` is allowed (for the `data-tables` skill) |

@@ -3,14 +3,14 @@
 This repo uses the **n8n-autopilot plugin** for Claude Code.
 Workflows are TypeScript (Decorator format). Never write n8n JSON by hand.
 
-> **Reference n8nac version: 2.2.1** (minimum 2.2.0). All setup, workspace, and credential flows below target the v2 manager-backed storage model. Single source of truth: `REFERENCE_N8NAC_VERSION` constant in `scripts/setup-check.sh`. Bump procedure: update the constant, sync README badges + `plugin.json`, add CHANGELOG entry.
+> **Reference n8nac version: 2.3.6** (minimum 2.3.0). All setup and credential flows below target the v4-native environment-centric config model. Single source of truth: `REFERENCE_N8NAC_VERSION` constant in `scripts/setup-check.sh`. Bump procedure: update the constant, sync README badges + `plugin.json`, add CHANGELOG entry.
 
 ## Knowledge skills — read BEFORE inventing CLI surface
 
 | Skill | When to read |
 |---|---|
 | [`n8nac-cheatsheet`](skills/n8nac-cheatsheet/SKILL.md) | Default first stop. "Which command for X?" — curated table covering 60+ common operations across workspace, env, workflows, executions, credentials, recipes, schemas. |
-| [`n8nac-reference`](skills/n8nac-reference/SKILL.md) | Raw `n8nac --help` tree, 74 subcommands. Read when the cheat-sheet does not cover a request. Source of truth for "does this command exist?" — if not in `reference.md`, it does not exist. |
+| [`n8nac-reference`](skills/n8nac-reference/SKILL.md) | Raw `n8nac --help` tree, 61 command/subcommand blocks. Read when the cheat-sheet does not cover a request. Source of truth for "does this command exist?" — if not in `reference.md`, it does not exist. |
 | [`n8n-architect`](https://github.com/EtienneLescot/n8n-as-code) (companion plugin) | Schema-First Research, workflow authoring rules, AI/LangChain patterns, Common Mistakes. Owned by Etienne's `n8n-as-code` plugin. |
 
 **Rule:** before running `npx n8nac <cmd> --help` interactively, `grep` the cheat-sheet, then `grep` the reference file. Only fall back to live `--help` if both lookups fail — and treat that as a sign to regenerate the reference (`bash scripts/dump-n8nac-help.sh > skills/n8nac-reference/reference.md`).
@@ -23,7 +23,7 @@ Workflows are TypeScript (Decorator format). Never write n8n JSON by hand.
 |---|---|
 | "find credential <name>" / "which cred is X" / "list Dropbox creds in this project" | `/n8n-autopilot:find-credential <pattern>` (project-scoped by default; add `--type <credType>` or `--project all`) |
 | "list n8n projects" / "which projects exist" / "show projects on instance" | `/n8n-autopilot:find-project` |
-| "switch workspace to project X" | `npx n8nac workspace set-project --project-name "<X>"` then `/n8n-autopilot:check-mcps` |
+| "switch workspace to project X" | verify env target via `npx n8nac env list --json`, then `npx n8nac env update <env> --project-name "<X>"` then `/n8n-autopilot:check-mcps` |
 | "show active project / instance binding" | `npx n8nac workspace status --json` |
 | "build a workflow that does X" | `/n8n-autopilot:build-workflow "<description>"` (prose pipeline) |
 | "build/edit with hard-enforced gates" (experimental) | `/n8n-autopilot:build-workflow-v2 "<description>"` — JS-orchestrated, gate-checks as control flow |
@@ -31,7 +31,7 @@ Workflows are TypeScript (Decorator format). Never write n8n JSON by hand.
 | "help me plan an n8n workflow" / "I want to automate X but don't know how" / user has only a rough idea | `/n8n-autopilot:stack-intake "<one-line idea>"` — guided interview → writes a PRP for build-stack-v2 |
 | "deploy <file>.workflow.ts" | `/n8n-autopilot:deploy <file>.workflow.ts` |
 | "pull every remote-only workflow / fix mirror drift" | `/n8n-autopilot:mirror-sync` |
-| "which env/instance is this session on" / "pin session to env X" | `npx n8nac env list --json` · pin per-session via `export N8NAC_ENVIRONMENT=<env>` or per-call `npx n8nac --env <env> …` |
+| "which env/instance is this session on" / "pin session to env X" / "how does session env pinning work" / "why was my env command blocked" | `/n8n-autopilot:session-env` (explains the model + reports session-vs-global). Pin per-session via `.claude/settings.json` `env` block `N8NAC_ENVIRONMENT=<env>` (or `export`/`--env`) — **never `env use`** (mutates shared global, blocked by clobber-guard) |
 | "fix stale credential IDs in workflows" | `/n8n-autopilot:sync-credentials --fix-workflows` (project-scoped) |
 | "regenerate inventory / list of nodes" | `/n8n-autopilot:inventory` |
 | "data table CRUD" (create/seed/list/drop tables in n8n) | `/n8n-autopilot:data-tables` |
@@ -92,10 +92,18 @@ falls back). The SessionStart hook `scripts/report-session-env.sh` prints the ac
 (name + host + project) so you always know where you are. **Verified routing**: `N8NAC_ENVIRONMENT`
 and `--env` both route instance commands to the named env's instance, independent of the global active.
 
+**Clobber-guard:** `enforce-env.sh` also **blocks `env use` / `env pin` unconditionally** — those
+mutate the machine-GLOBAL active env (shared across all sessions) and are the exact operation that
+lets one session re-point another's un-pinned commands. Sessions pin via `N8NAC_ENVIRONMENT`, never
+`env use`. Bypass for a deliberate machine-default change only: `N8N_AUTOPILOT_ALLOW_ENV_USE=1 npx
+n8nac env use <name>`. **Gotcha:** `workspace status` is env-blind (reflects the global active, ignores
+the session var) — use `env status` / `env list --json` for session-aware resolution. Full model +
+empirical isolation test (`scripts/test-env-isolation.sh`, 17 assertions): **[`session-env`](skills/session-env/SKILL.md)** (`/n8n-autopilot:session-env`).
+
 ## Setup
 
 **Brand-new repo? One command:**
-→ `/n8n-autopilot:init-repo [target-dir]` — scaffolds dir layout + CLAUDE.md/README/.gitignore/.mcp.json/.env.example, runs the v2.2 setup flow (`setup --mode connect-existing` + `workspace pin-instance` + `set-sync-folder`), pulls schemas, verifies.
+→ `/n8n-autopilot:init-repo [target-dir]` — scaffolds dir layout + CLAUDE.md/README/.gitignore/.mcp.json/.env.example, runs the v2.3 setup flow (`env add` + `env auth set` + `env use`), pulls schemas, verifies.
 
 **Manual (if you prefer step-by-step):**
 1. Install both plugins (n8n-autopilot + Etienne's companion):
@@ -107,19 +115,18 @@ and `--env` both route instance commands to the named env's instance, independen
    claude plugin install n8n-as-code@n8nac-marketplace
    ```
    The companion plugin (Etienne) provides the `n8n-architect` skill that owns schema-research, authoring rules, AI/LangChain rules, etc. n8n-autopilot does workflow lifecycle orchestration (init-repo, build-workflow pipeline, deploy, sync-credentials, inventory, data-tables).
-2. Bind workspace to n8n instance (n8nac >= 2.2 stores config in user home, NOT the repo):
+2. Add and activate the environment (n8nac >= 2.3 stores config in user home, NOT the repo):
    ```bash
-   printf "%s" "$N8N_API_KEY" | npx n8nac setup --mode connect-existing \
-     --host "$N8N_API_URL" --api-key-stdin --json
-   npx n8nac workspace pin-instance --instance-id <id-from-setup-output>
-   npx n8nac workspace set-sync-folder workflows
+   npx n8nac env add Prod --base-url "$N8N_API_URL" --workflows-path workflows
+   printf '%s' "$N8N_API_KEY" | npx n8nac env auth set Prod --api-key-stdin
+   npx n8nac env use Prod
    # Optional, for multi-project instances:
-   npx n8nac workspace set-project --project-name Personal
+   npx n8nac env update Prod --project-name Personal
    ```
 3. `/n8n-autopilot:pull-schemas` — populate `schemas/nodes/` (gitignored, instance-specific)
 4. Verify: `/n8n-autopilot:check-mcps` (or runs auto via SessionStart hook; expects workspace status `bound`)
 
-**Migrating from n8nac < 2.2?** Legacy `./n8nac-config.json` is migrated via `npx n8nac workspace migrate-v1 --write`. The plugin does not delete the legacy file; `init-repo` warns and stops.
+**Stray in-repo `./n8nac-config.json`?** The `workspace migrate` / `migrate-v1` commands no longer exist — workspace storage is v4-native (config lives in `~/n8nac-config.json` + `~/.n8n-manager/`). If a legacy in-repo config file exists, **delete it manually** — there is no migration command.
 
 ## Auto-Reactions on SessionStart
 
@@ -137,7 +144,7 @@ Hard rule: parse the literal slash-command after `AUTOPILOT_ACTION_REQUIRED:` an
 Signals NOT auto-triggered (informational only):
 - `check-inventory-freshness.sh` (`INFO:` prefix — surface to user, do not auto-regenerate; inventory regeneration is expensive).
 - `check-feedback-pending.sh` (`INFO:` prefix — unsynced autopilot feedback records exist; offer `/n8n-autopilot:feedback`, do NOT auto-run — giving/syncing feedback needs user consent).
-- `check-workspace-migration.sh` — flags legacy in-repo `./n8nac-config.json` (suggests `npx n8nac workspace migrate-v1 --write`) and `workspace status: dry-run` / `migration-required` (suggests `npx n8nac workspace migrate --write`). Migrations move files on the user's filesystem — surface the block to the user verbatim, do NOT auto-run.
+- `check-workspace-migration.sh` — warns when a stray in-repo `./n8nac-config.json` is detected. The `workspace migrate` and `migrate-v1` commands no longer exist (workspace is v4-native; config lives in `~/n8nac-config.json` + `~/.n8n-manager/`). Surface the warning to the user and ask them to **delete the in-repo file manually** — there is no automated migration.
 
 ## Entry Point
 
@@ -182,7 +189,7 @@ When the user asks to create, build, or scaffold a workflow:
 - AI-Kontext: `npx n8nac update-ai` — AGENTS.md + AI-Kontext regenerieren
 - Multi-Environment: `npx n8nac env list/add/update/pin/remove` — Environment-Management (mehrere n8n-Instanzen pro Repo)
 - Aktives Environment wechseln: `npx n8nac env use <name>` (alias: `env pin <name>`)
-- Workspace ↔ Instanz-Binding: `npx n8nac workspace pin-instance` / `clear-instance` / `set-sync-folder` / `set-project` / `status` / `migrate` / `migrate-v1`
+- Workspace-Kontext lesen: `npx n8nac workspace status --json` (alias `get`) — read-only, zeigt aktiv gebundenes Env + Projekt; Mutation erfolgt über `env add` / `env update` / `env use`
 - Setup (Erstkonfiguration): `npx n8nac setup --mode <managed-local|connect-existing|generation-only>` (Modus-Liste: `npx n8nac setup-modes`). `init` / `init-auth` / `init-project` aus n8nac < 2.2 sind **entfernt** — niemals verwenden.
 - Node-Referenz: `npx n8nac skills node-schema <name>` — schnelles TypeScript-Snippet (`--json` für strukturierten Agent-Output); `skills node-info <name> --json` — vollständige Node-Info; `skills related <query>` — verwandte Nodes; `skills guides` — Tutorials; `skills list --nodes/--docs/--guides` — Enumerierung
 - `@workflow` Decorator: optionales `description`-Feld (Round-trip-fähig, erscheint in n8n UI und `n8nac list`-Output)

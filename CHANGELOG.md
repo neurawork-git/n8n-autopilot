@@ -2,6 +2,85 @@
 
 All notable changes to **n8n-autopilot** are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.0] — 2026-06-08
+
+### ⚠ BREAKING — minimum n8nac raised 2.2.0 → 2.3.0
+
+The plugin now requires **n8nac ≥ 2.3.0**. n8nac 2.3 removed the `workspace pin-instance` /
+`set-project` / `set-sync-folder` / `migrate*` mutators and the `instance-target` command, replacing
+them with the environment-centric `env` model that the plugin's setup, init-repo, and credential flows
+now depend on. Setups pinned to n8nac < 2.3 will fail the SessionStart `setup-check` (hard error) and
+the init/credential flows will break. Since n8nac is run via `npx` (always latest), most users upgrade
+transparently; anyone pinning an older n8nac must move to ≥ 2.3.0.
+
+### Changed — n8nac compatibility bump 2.2.1 → 2.3.6 (environment-centric config model)
+
+n8nac 2.3.x replaced the workspace-mutation config model with an **environment-centric** model.
+`n8nac workspace` is now read-only (`status` / alias `get` only); all instance-binding, project, and
+sync-folder config moved onto `env`. Native cross-env `promote` was added in 2.3.0.
+
+**Removed commands** (no longer exist — do not use):
+- `n8nac workspace pin-instance` / `clear-instance`
+- `n8nac workspace set-project` / `clear-project`
+- `n8nac workspace set-sync-folder` / `clear-sync-folder`
+- `n8nac workspace migrate` / `migrate-v1`
+- `n8nac instance-target` (entire command + subcommands add/list/remove/update)
+
+**New / replacement commands:**
+- `n8nac env add <name> --base-url <url> --workflows-path workflows` — create + bind an environment
+- `printf '%s' "$N8N_API_KEY" | n8nac env auth set <name> --api-key-stdin` — store API key
+- `n8nac env use <name>` — activate (alias of `env pin`)
+- `n8nac env update <name> --project-name <P>` — replaces `workspace set-project`
+- `n8nac promote [path] --from <env> --to <env>` — native cross-env promotion
+
+**Plugin-side updates:**
+- `REFERENCE_N8NAC_VERSION` bumped 2.2.1 → 2.3.6; minimum version bumped 2.2.0 → 2.3.0 in
+  `scripts/setup-check.sh`
+- `scripts/dump-n8nac-help.sh` — dropped the dead `instance-target` node;
+  `skills/n8nac-reference/reference.md` regenerated against 2.3.6
+- `scripts/setup/`, `skills/init-repo/`, `README.md`, `CLAUDE.md`, `skills/n8nac-cheatsheet/` —
+  all setup and mutation references migrated from `workspace pin-instance` / `set-project` /
+  `set-sync-folder` to `env add` / `env auth set` / `env update` / `env use`
+- `skills/find-credential/`, `skills/find-project/` — workspace-mutation calls removed
+- `scripts/check-workspace-migration.sh` — neutered; the migrate commands no longer exist, so
+  stale `./n8nac-config.json` detection now instructs the user to **delete the file manually**
+  (config lives in `~/n8nac-config.json` + `~/.n8n-manager/`; no migrate command available)
+
+**Kept unchanged:** `n8nac workspace status --json` (read-only effective-context resolver, still
+valid), `n8nac setup --mode <mode>` facade (still exists; binding now follows via env commands),
+per-session `N8NAC_ENVIRONMENT` pin model and the `enforce-env.sh` / `report-session-env.sh` hooks.
+
+### Added — session-env isolation: clobber-guard + `session-env` skill + isolation test
+
+Closes the one hole in the per-session env model: `env use` / `env pin` mutate the machine-GLOBAL
+active env (shared across all shells and Claude sessions), so a session running it silently re-points
+every other un-pinned session. Empirically reproduced (15/17 → the two clobber-guard assertions failed
+before the fix), then closed.
+
+- **`scripts/enforce-env.sh` clobber-guard** — `env use` / `env pin` are now **blocked
+  unconditionally** (exit 2), with a clear message steering to `N8NAC_ENVIRONMENT`. Deliberate
+  machine-default changes bypass via `N8N_AUTOPILOT_ALLOW_ENV_USE=1`. Read-only `env list` / `env
+  status` stay allowed.
+- **`scripts/test-env-isolation.sh`** — empirical proof harness (17 assertions, read-only against
+  instances, never runs `env use`): routing via `N8NAC_ENVIRONMENT` + `--env` to distinct hosts,
+  the **safety invariant** (global active untouched by session pins, re-asserted at end), `workspace
+  status` env-blindness, and full gate + clobber-guard behaviour. Verified `=== 17 passed, 0 failed ===`.
+- **`skills/session-env/`** (`/n8n-autopilot:session-env`) — documents the model (global active vs
+  per-session `N8NAC_ENVIRONMENT`), the three resolution scopes, both enforcement hooks, the
+  `workspace status` gotcha, and runs the verification/test. Linked from the CLAUDE.md Env-Gate
+  section + cheat-sheet.
+- **Env-blind call-site fixes** — three skills used `workspace status` (env-blind) as a SESSION
+  project resolver and so scoped to the wrong project when the session was pinned elsewhere:
+  `find-credential/search.js`, `find-project/list.js`, and `sync-credentials/fix-workflows.js` (the
+  last writes credential IDs into workflow files → real corruption risk). All three now resolve the
+  active project from `env status --json` (session-aware). `workspace status` is deliberately kept
+  for global-binding/liveness checks (`setup-check.sh`, `check-installed-nodes.sh`) — not forbidden.
+- **Workflow env-propagation verified** — empirically confirmed (probe Workflow, generic agent +
+  the real `n8n-tester` agentType) that `N8NAC_ENVIRONMENT` propagates session → Claude Workflow
+  runtime → `agent()` subagent Bash, so the v2/stack pipelines' "env is inherited, run bare" design
+  routes to the correct instance. Both agents resolved the session env + host; bare instance commands
+  ran against the right env and left the global active untouched.
+
 ## [4.9.0] — 2026-05-30
 
 ### Added — build-stack-v2 (workflow-stack orchestrator) + stack-intake interview

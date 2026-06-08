@@ -10,10 +10,10 @@
 
 **A Claude Code plugin that turns natural-language prompts into validated, deployed n8n workflows.**
 
-[![Version](https://img.shields.io/badge/version-4.1.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-4.10.0-blue.svg)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
-[![n8nac](https://img.shields.io/badge/n8nac-2.2.1%20(min%202.2.0)-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
+[![n8nac](https://img.shields.io/badge/n8nac-2.3.6%20(min%202.3.0)-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
 [![Claude Code](https://img.shields.io/badge/claude%20code-plugin-d97757.svg)](https://docs.claude.com/claude-code)
 
 ```
@@ -79,7 +79,7 @@ Claude runs a 3-phase pipeline automatically:
 /n8n-autopilot:init-repo my-customer
 ```
 
-Scaffolds the directory layout, writes a plugin-compatible `CLAUDE.md`, drives the n8nac ≥ 2.2 setup flow (`setup --mode connect-existing` + `workspace pin-instance` + `set-sync-folder`), pulls node schemas, and verifies — so the first `build-workflow` call works immediately.
+Scaffolds the directory layout, writes a plugin-compatible `CLAUDE.md`, drives the n8nac ≥ 2.3 setup flow (`env add` + `env auth set` + `env use`), pulls node schemas, and verifies — so the first `build-workflow` call works immediately.
 
 ### Deploy an existing workflow file
 
@@ -227,7 +227,7 @@ No n8n API needed         Decorator-TS format,            n8n API required
 ### Prerequisites
 
 - **Node.js 18+**
-- **n8nac ≥ 2.2.0** (auto-installed via `npx`; the plugin enforces the minimum)
+- **n8nac ≥ 2.3.0** (auto-installed via `npx`; the plugin enforces the minimum)
 - **Claude Code**
 - **Running n8n instance** — local (`docker run -p 5678:5678 n8nio/n8n`) or [n8n Cloud](https://app.n8n.cloud)
 - **n8n API key** — n8n UI → Settings → n8n API → Create API Key
@@ -267,25 +267,26 @@ claude plugin install n8n-as-code@n8nac-marketplace
 
 > **No `.mcp.json` needed.** n8n-autopilot 4.x is CLI-only — all schema research goes through `npx n8nac skills …`. The `mcp__n8n-as-code__*` namespace from older versions never had a stable upstream source (npm `n8nac mcp` is broken; Etienne's plugin ships skill knowledge, not an MCP server).
 
-### 2. Bind workspace to your n8n instance (n8nac ≥ 2.2)
+### 2. Bind workspace to your n8n instance (n8nac ≥ 2.3)
 
-> **Reference n8nac version: 2.2.1.** The plugin targets the v2 manager-backed storage model — config lives in user home (`~/n8nac-config.json` + `~/.n8n-manager/`), NOT in the repo. The legacy `init` / `init-auth` / `init-project` commands were removed in 2.2.
+> **Reference n8nac version: 2.3.6.** The plugin targets the environment-centric config model — config lives in user home (`~/n8nac-config.json` + `~/.n8n-manager/`), NOT in the repo. The legacy `init` / `init-auth` / `init-project` commands were removed in 2.2; the `workspace pin-instance` / `set-sync-folder` / `set-project` mutators were removed in 2.3.
 
 ```bash
-# 3a. Register the instance (API key piped on stdin — never in shell history)
-printf "%s" "$N8N_API_KEY" | npx n8nac setup --mode connect-existing \
-  --host "$N8N_API_URL" --api-key-stdin --json
+# 2a. Create and configure the environment (tell n8nac where workflows live)
+npx n8nac env add Prod --base-url "$N8N_API_URL" --workflows-path workflows
 
-# 3b. Pin this workspace + tell n8nac where workflows live
-npx n8nac workspace pin-instance --instance-id <id-from-setup-output>
-npx n8nac workspace set-sync-folder workflows
+# 2b. Store the API key (piped on stdin — never in shell history)
+printf "%s" "$N8N_API_KEY" | npx n8nac env auth set Prod --api-key-stdin
 
-# 3c. Optional: scope this workspace to a specific n8n project
-npx n8nac workspace set-project --project-name Personal
-# or: npx n8nac workspace set-project --project-id <id>
+# 2c. Activate this environment for the session
+npx n8nac env use Prod
+
+# Optional: scope to a specific n8n project (can also be passed to env add)
+npx n8nac env update Prod --project-name Personal
+# or: npx n8nac env update Prod --project-id <id>
 ```
 
-**Migrating from n8nac < 2.2?** Run `npx n8nac workspace migrate-v1 --write` once — it moves your legacy `./n8nac-config.json` into the user-home manager model.
+**Migrating from n8nac < 2.3?** The `workspace migrate-v1` command was removed in 2.3. If you have a stray in-repo `./n8nac-config.json`, delete it manually — config now lives exclusively in user home (`~/n8nac-config.json` + `~/.n8n-manager/`). Then re-run the setup flow above.
 
 ### 3. Pull node schemas
 
@@ -303,7 +304,7 @@ Schemas are not committed — they are instance-specific (community nodes vary p
 
 (or runs auto via SessionStart hook the next time you open Claude Code in this repo)
 
-Checks Node.js, n8nac CLI version (min 2.2.0, reference 2.2.1), workspace binding via `n8nac workspace status`, live n8n connectivity, companion plugin enabled, community-node schema coverage. Fix any errors before building workflows.
+Checks Node.js, n8nac CLI version (min 2.3.0, reference 2.3.6), workspace binding via `n8nac workspace status`, live n8n connectivity, companion plugin enabled, community-node schema coverage. Fix any errors before building workflows.
 
 ---
 
@@ -375,14 +376,11 @@ npx n8nac skills node-info <name> --json               # full node info
 npx n8nac skills examples search/list/info/download    # browse + download community templates
 npx n8nac skills list --nodes --docs --guides          # enumerate available references
 
-npx n8nac env list/add/update/pin/remove               # manage workspace environments (multiple n8n instances)
+npx n8nac env list/add/update/pin/remove               # manage environments (multiple n8n instances / projects)
 npx n8nac env use <name>                               # switch active environment (alias: env pin)
-npx n8nac workspace status --json                      # effective workspace context (authoritative)
-npx n8nac workspace pin-instance / clear-instance      # bind workspace to a specific instance
-npx n8nac workspace set-sync-folder workflows          # tell n8nac where *.workflow.ts live
-npx n8nac workspace set-project --project-name <n>     # scope workspace to a specific n8n project
-npx n8nac workspace migrate-v1 --write                 # migrate legacy ./n8nac-config.json (n8nac < 2.2)
-npx n8nac setup --mode connect-existing --host <url> --api-key-stdin   # initial workspace binding
+npx n8nac env auth set <name> --api-key-stdin          # store API key for an environment
+npx n8nac workspace status --json                      # effective workspace context (authoritative, read-only)
+npx n8nac setup --mode connect-existing|managed-local|generation-only   # pick facade runtime mode
 
 npx n8nac credentials recipes --json                   # shared credential recipe catalogue (openai-native, slack-oauth, …)
 npx n8nac credentials inventory --json                 # local credential readiness inventory

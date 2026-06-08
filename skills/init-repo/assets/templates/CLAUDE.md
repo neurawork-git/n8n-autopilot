@@ -56,7 +56,7 @@ repo basename; never customer data.
 | `data/` | Local data files used by workflows (CSV, JSON, etc.) |
 | `docs/` | Workflow design docs, runbooks |
 
-> **n8nac config:** Workspace + instance config lives in user home (`~/n8nac-config.json` + `~/.n8n-manager/`) under n8nac >= 2.2 — NOT in this repo. Bind this workspace to an n8n instance via `npx n8nac setup --mode connect-existing` + `npx n8nac workspace pin-instance --instance-id <id>`. See [n8nac docs](https://www.npmjs.com/package/n8nac).
+> **n8nac config:** Environment + instance config lives in user home (`~/n8nac-config.json` + `~/.n8n-manager/`) under n8nac >= 2.3 — NOT in this repo. Bind this repo to an n8n instance via `npx n8nac env add <name> --base-url <url> --workflows-path workflows`, then `printf '%s' "$N8N_API_KEY" | npx n8nac env auth set <name> --api-key-stdin`, then `npx n8nac env use <name>`. See [n8nac docs](https://www.npmjs.com/package/n8nac).
 
 ## Tool Boundaries
 
@@ -88,7 +88,7 @@ repo basename; never customer data.
 - AI context: `npx n8nac update-ai` — regenerate `AGENTS.md` + AI context
 - Multi-environment: `npx n8nac env list/add/update/pin/remove`
 - Switch active environment: `npx n8nac env use <name>` (alias: `env pin`)
-- Workspace ↔ instance binding: `npx n8nac workspace pin-instance` / `clear-instance` / `status`
+- Workspace status (read-only): `npx n8nac workspace status --json` — effective-context resolver
 - Node reference: `npx n8nac skills node-schema <name>` (quick snippet, `--json` for agents); `skills node-info <name> --json` (full); `skills related <query>`; `skills guides`; `skills list --nodes/--docs/--guides`
 - `@workflow` decorator: optional `description` field (round-trip-capable, appears in n8n UI and `n8nac list`)
 

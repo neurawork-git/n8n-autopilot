@@ -10,10 +10,11 @@
 # Idempotent: refuses to overwrite existing files. Re-run safe.
 # Exits 0 on success, non-zero on error.
 #
-# n8nac >= 2.2 note: workspace/instance config lives in user home
-# (~/n8nac-config.json + ~/.n8n-manager/) and is NOT scaffolded by this script.
-# Run `npx n8nac setup --mode connect-existing --host <url> --api-key-stdin`
-# after this script finishes.
+# n8nac >= 2.3 note: environments are the config unit (not workspace mutations).
+# After this script finishes, bind the repo to an n8n instance via:
+#   npx n8nac env add <name> --base-url <url> --workflows-path workflows
+#   printf '%s' "$N8N_API_KEY" | npx n8nac env auth set <name> --api-key-stdin
+#   npx n8nac env use <name>
 
 set -euo pipefail
 
@@ -54,7 +55,7 @@ echo "Name:   $REPO_NAME"
 echo ""
 
 # ── Refuse non-empty dir unless --force ──────────────────────────────────────
-# (We no longer refuse on n8nac-config.json — in n8nac >= 2.2 that file lives
+# (We no longer refuse on n8nac-config.json — in n8nac >= 2.3 that file lives
 # in user home, not the workspace. Workspace state is detected via
 # `npx n8nac workspace status` after scaffolding.)
 if [ "$FORCE" -eq 0 ]; then
@@ -126,21 +127,20 @@ fi
 echo ""
 echo "=== Scaffold complete ==="
 echo ""
-echo "Next steps (n8nac >= 2.2 setup flow):"
+echo "Next steps (n8nac >= 2.3 setup flow):"
 echo "  1. cd $TARGET_ABS"
 echo "  2. cp .env.example .env             # fill in N8N_API_URL + N8N_API_KEY"
-echo "  3. Bind workspace to n8n instance (API key via stdin — never in shell history):"
-echo "       printf '%s' \"\$N8N_API_KEY\" | npx n8nac setup --mode connect-existing \\"
-echo "         --host \"\$N8N_API_URL\" --api-key-stdin --json"
-echo "     (Or interactive: npx n8nac setup)"
-echo "  4. Pin instance + sync folder + (optional) project:"
-echo "       npx n8nac workspace pin-instance --instance-id <id-from-setup-output>"
-echo "       npx n8nac workspace set-sync-folder workflows"
-echo "       npx n8nac workspace set-project --project-name Personal  # if multi-project"
+echo "  3. Register and authenticate the environment (ENV_NAME = short label, e.g. Prod):"
+echo "       npx n8nac env add \"\$ENV_NAME\" --base-url \"\$N8N_API_URL\" --workflows-path workflows"
+echo "       printf '%s' \"\$N8N_API_KEY\" | npx n8nac env auth set \"\$ENV_NAME\" --api-key-stdin"
+echo "     Multi-project instance? Add: --project-name \"<Project>\""
+echo "  4. Activate the environment:"
+echo "       npx n8nac env use \"\$ENV_NAME\""
 echo "  5. In Claude Code: /n8n-autopilot:pull-schemas"
 echo "  6. Verify: open Claude Code in the new repo (SessionStart hook runs setup-check)"
 echo "     Or invoke explicitly: /n8n-autopilot:check-mcps"
 echo ""
-echo "Migrating from n8nac < 2.2 with a legacy ./n8nac-config.json?"
-echo "  Run: npx n8nac workspace migrate-v1 --write"
+echo "Legacy in-repo n8nac-config.json found?"
+echo "  The 'workspace migrate-v1' command no longer exists in n8nac >= 2.3."
+echo "  Delete the file manually — config now lives in user home (~/n8nac-config.json + ~/.n8n-manager/)."
 echo ""

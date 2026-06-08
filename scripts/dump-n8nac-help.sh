@@ -52,11 +52,10 @@ emit_block() {
   echo ''
 }
 
-# Hard-coded parent allowlist (from n8nac 2.2.1 root --help).
+# Hard-coded parent allowlist (from n8nac 2.3.6 root --help).
 TOP_CMDS=(
   telemetry
   workspace
-  instance-target
   env
   setup
   setup-modes
@@ -113,7 +112,7 @@ for cmd in "${TOP_CMDS[@]}"; do
 
   # Only commands known to have subcommands
   case "$cmd" in
-    workspace|instance-target|env|credentials|workflow|execution|credential|skills)
+    workspace|env|credentials|workflow|execution|credential|skills)
       SUBS=$(list_subs "$cmd")
       for sub in $SUBS; do
         emit_block "n8nac $cmd $sub"

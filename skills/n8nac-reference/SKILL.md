@@ -1,12 +1,12 @@
 ---
 name: n8nac-reference
-description: Authoritative reference for every `n8nac` CLI command, subcommand, and flag (n8nac 2.2.1). Use this BEFORE running `--help` interactively, BEFORE guessing flags, and BEFORE inventing a subcommand. If a command does not appear in this file, it does not exist — research stops, do not invent CLI surface. Covers workspace, env, setup, credentials, credential, workflow, execution, skills, list/find/pull/push/verify/test/test-plan/fetch/resolve/convert, plus subcommand-level help.
+description: Authoritative reference for every `n8nac` CLI command, subcommand, and flag (n8nac 2.3.6). Use this BEFORE running `--help` interactively, BEFORE guessing flags, and BEFORE inventing a subcommand. If a command does not appear in this file, it does not exist — research stops, do not invent CLI surface. Covers workspace, env, setup, credentials, credential, workflow, execution, skills, list/find/pull/push/promote/verify/test/test-plan/fetch/resolve/convert, plus subcommand-level help.
 allowed-tools: Read, Grep, Glob, Bash(grep:*)
 ---
 
 # n8nac CLI — Authoritative Reference
 
-The full `n8nac --help` tree is captured in [`reference.md`](reference.md) (auto-generated, 74 subcommands across 26 top-level groups). Read it whenever you need to:
+The full `n8nac --help` tree is captured in [`reference.md`](reference.md) (auto-generated, 61 command/subcommand blocks across 24 top-level groups). Read it whenever you need to:
 
 - Know if a command exists (rule: **not in the file → does not exist**, do not invent it).
 - Look up exact flag names and short/long forms.
@@ -37,10 +37,9 @@ awk '/^### `n8nac workflow credential-required`/{flag=1;n=0} flag{print;n++; if(
 | `credentials` (readiness/recipes) | `delete`, `ensure`, `inventory`, `recipes`, `starter-kit`, `starter-kits`, `test` |
 | `env` | `add`, `auth`, `list`, `pin`, `remove`, `status`, `update` |
 | `execution` | `get`, `list` |
-| `instance-target` | `add`, `list`, `remove`, `update` |
 | `skills` | `docs`, `examples`, `guides`, `list`, `mcp`, `node-info`, `node-schema`, `related`, `search`, `update-ai`, `validate` |
 | `workflow` | `activate`, `credential-required`, `deactivate`, `present` |
-| `workspace` | `clear-instance`, `clear-project`, `clear-sync-folder`, `migrate`, `migrate-v1`, `pin-instance`, `set-project`, `set-sync-folder`, `status` |
+| `workspace` | `status` (alias `get`) — **read-only** since 2.3; all mutation moved to `env` |
 | `telemetry` | (no subcommands — flags only) |
 
 `credentials` (plural) and `credential` (singular) are **different** parent groups. Plural is for recipe / readiness / inventory management; singular is for direct create/list/get/delete/schema operations on the active instance. Mixing them is a common source of "command not found" errors.

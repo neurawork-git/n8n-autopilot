@@ -40,19 +40,25 @@ if (!pattern && !opts.type) {
   process.exit(1);
 }
 
-// ── Workspace status → active project
+// ── Session env → active project
+// MUST use `env status` (honours N8NAC_ENVIRONMENT / --env), NOT `workspace
+// status` — the latter is env-BLIND (reflects the shared global active env), so
+// it would scope the credential search to the wrong project when this session is
+// pinned elsewhere. See skills/session-env.
 let ws;
 try {
-  ws = JSON.parse(execSync('npx --yes n8nac workspace status --json', {
+  const out = execSync('npx --yes n8nac env status --json', {
     stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 4 * 1024 * 1024
-  }).toString());
+  }).toString();
+  ws = JSON.parse(out.slice(out.indexOf('{')));
 } catch (e) {
-  console.error('ERROR: workspace not bound. Run: npx n8nac setup --mode connect-existing');
+  console.error('ERROR: no n8n environment resolved. Pin one: export N8NAC_ENVIRONMENT=<env> (or pass --env). List: npx n8nac env list --json');
   process.exit(1);
 }
 
-const activeProject = ws.activeEnvironment && ws.activeEnvironment.projectId
-  ? { id: ws.activeEnvironment.projectId, name: ws.activeEnvironment.projectName || '?' }
+const _r = ws.resolved || ws;
+const activeProject = (ws.projectId || _r.projectId)
+  ? { id: ws.projectId || _r.projectId, name: ws.projectName || _r.projectName || '?' }
   : null;
 
 // ── Resolve --project flag
@@ -139,7 +145,7 @@ console.log('');
 if (activeProject) {
   console.log(`Active project (workspace pin): ${activeProject.name} (${activeProject.id})`);
 } else {
-  console.log('Active project: NONE (workspace has no project pin — set via `npx n8nac workspace set-project --project-name <name>`)');
+  console.log('Active project: NONE (workspace has no project pin — set via `npx n8nac env update <env> --project-name <name>`)');
 }
 console.log(`Scope: ${scopeMode}${scopeFilter ? ' (' + (scopeFilter.id || scopeFilter.name) + ')' : ''}    Pattern: "${pattern || '*'}"${opts.type ? '    Type: ' + opts.type : ''}${opts.exact ? '    (exact)' : ''}`);
 console.log('');

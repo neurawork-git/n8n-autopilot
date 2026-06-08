@@ -16,15 +16,12 @@ allowed-tools: Read, Grep
 
 | User intent | Command |
 |---|---|
-| First-time setup (connect to existing n8n) | `printf "%s" "$N8N_API_KEY" \| npx n8nac setup --mode connect-existing --host "$N8N_API_URL" --api-key-stdin --json` |
+| First-time setup (connect to existing n8n) | `npx n8nac env add <name> --base-url "$N8N_API_URL" --workflows-path workflows` then `printf "%s" "$N8N_API_KEY" \| npx n8nac env auth set <name> --api-key-stdin` then `npx n8nac env use <name>` |
 | List supported setup modes | `npx n8nac setup-modes` |
 | Show effective workspace context (active project, instance, sync folder) | `npx n8nac workspace status --json` |
-| Pin workspace to a specific n8n instance | `npx n8nac workspace pin-instance --instance-id <id>` |
-| Pin workspace to a specific n8n project | `npx n8nac workspace set-project --project-name "<name>"` or `--project-id <id>` |
-| Clear project pin (fall back to instance default) | `npx n8nac workspace clear-project` |
-| Set workflow sync folder for this workspace | `npx n8nac workspace set-sync-folder <relativePath>` |
-| Migrate v1 (`./n8nac-config.json`) to v2 storage | `npx n8nac workspace migrate-v1 --write` |
-| Migrate v2 workspace metadata when prompted | `npx n8nac workspace migrate --write` (preview: drop `--write`) |
+| Bind instance + set sync folder (new env) | `npx n8nac env add <name> --base-url <url> --workflows-path workflows` |
+| Switch active project on an environment | `npx n8nac env update <env> --project-name "<name>"` or `--project-id "<id>"` |
+| Set workflow sync folder on an existing env | `npx n8nac env update <env> --workflows-path <relativePath>` |
 
 ## Multi-Environment (multiple n8n instances per repo)
 
@@ -32,19 +29,11 @@ allowed-tools: Read, Grep
 |---|---|
 | List configured environments | `npx n8nac env list --json` |
 | Show active environment + auth state | `npx n8nac env status --json` |
-| Add a new environment | `npx n8nac env add --name <name> --instance-id <id>` |
-| Switch active environment | `npx n8nac env pin <name>` (alias: `env use`) |
-| Re-authenticate an environment | `npx n8nac env auth <name>` |
+| Add a new environment | `npx n8nac env add <name> --base-url <url> --workflows-path workflows` |
+| Switch active environment | `npx n8nac env use <name>` (alias: `env pin`) |
+| Store API key for an environment | `printf "%s" "$N8N_API_KEY" \| npx n8nac env auth set <name> --api-key-stdin` |
+| Update any env property (URL / project / sync folder / name) | `npx n8nac env update <name-or-id> --base-url <url>` (swap flag as needed) |
 | Target one command at a non-active env | `npx n8nac --env <name> <command>` (root flag) |
-
-## Instance Targets (low-level — usually managed via `setup` / `env`)
-
-| User intent | Command |
-|---|---|
-| List instance targets | `npx n8nac instance-target list --json` |
-| Add a target manually | `npx n8nac instance-target add --url <url> --api-key <key>` |
-| Update a target | `npx n8nac instance-target update <id> --url <url>` |
-| Remove a target | `npx n8nac instance-target remove <id>` |
 
 ## Workflows — Local & Remote Lifecycle
 
@@ -144,8 +133,8 @@ allowed-tools: Read, Grep
 7. **`mcpTrigger` workflows require manual UI publish** after every push. `n8nac push` writes a new draft; the previously-published MCP endpoint may diverge.
 8. **Archived workflows are read-only**. `push` will reject. Unarchive in n8n UI first (no n8nac command for this).
 9. **Curl carve-out**: `/api/v1/data-tables` is the only n8n public API path you may hit directly (see `/n8n-autopilot:data-tables`). Everything else goes through `n8nac`.
-10. **Old commands removed in n8nac >= 2.2**: `init`, `init-auth`, `init-project` no longer exist — use `setup --mode <mode>` + `workspace pin-instance` instead.
+10. **Old commands removed in n8nac >= 2.3**: `init`, `init-auth`, `init-project` no longer exist — use `setup --mode <mode>`. Post-setup binding is via `env add` / `env auth set` / `env use` (NOT `workspace pin-instance`, which is also removed). `workspace set-project`, `workspace set-sync-folder`, `workspace clear-*`, `workspace migrate`, `workspace migrate-v1`, and `instance-target` are all gone — use `env update <name> --project-name/--workflows-path` instead.
 
 ## When this cheat-sheet is not enough
 
-Read [`n8nac-reference/reference.md`](../n8nac-reference/reference.md) — the full machine-generated help tree (74 subcommands).
+Read [`n8nac-reference/reference.md`](../n8nac-reference/reference.md) — the full machine-generated help tree (61 command/subcommand blocks).

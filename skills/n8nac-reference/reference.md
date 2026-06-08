@@ -1,6 +1,6 @@
 # n8nac CLI Reference — Generated
 
-Generated automatically from `n8nac --help` recursion. n8nac version: **2.2.1**.
+Generated automatically from `n8nac --help` recursion. n8nac version: **2.3.6**.
 
 This file is the source of truth for what subcommands and flags exist. If a command appears here, it exists. If it does not appear here, **it does not exist** — do not invent it.
 
@@ -27,10 +27,7 @@ Options:
 
 Commands:
   telemetry                            Manage anonymous n8n-as-code telemetry
-  workspace                            Inspect or migrate n8n workspace
-                                       configuration
-  instance-target|target               Compatibility: manage low-level
-                                       workspace targets used by environments
+  workspace                            Inspect n8n workspace configuration
   env|environment                      Manage n8n workspace environments
   setup [options]                      Choose how this facade should use n8n
                                        runtime capabilities
@@ -48,7 +45,7 @@ Commands:
   pull <workflowId>                    Download a single workflow from n8n to
                                        local directory
   push [options] <path>                Upload a single local workflow to n8n
-  promote [options] <path>             Promote a local workflow file from one
+  promote [options] [path]             Promote a local workflow file from one
                                        workspace environment to another
   verify <workflowId>                  Fetch a workflow from n8n and validate
                                        its nodes against the local schema
@@ -129,144 +126,15 @@ Commands:
 ```
 Usage: n8nac workspace [options] [command]
 
-Inspect or migrate n8n workspace configuration
+Inspect n8n workspace configuration
 
 Options:
-  -h, --help                        display help for command
+  -h, --help            display help for command
 
 Commands:
-  status|get [options]              Show the effective n8n workspace context
-                                    resolved by the backend
-  migrate [options]                 Inspect or run required workspace
-                                    migrations
-  migrate-v1 [options]              Inspect or migrate a legacy v1/v2
-                                    n8nac-config.json into the v2
-                                    manager-backed storage model
-  pin-instance [options]            Pin the effective n8n instance for this
-                                    workspace
-  clear-instance [options]          Clear the workspace n8n instance pin and
-                                    fall back to the global active instance
-  set-sync-folder [options] <path>  Set the n8n sync folder override for this
-                                    workspace
-  clear-sync-folder [options]       Clear the workspace n8n sync folder
-                                    override and fall back to the global
-                                    default
-  set-project [options]             Set the n8n project override for this
-                                    workspace from known project values
-  clear-project [options]           Clear the workspace n8n project override
-                                    and fall back to the instance default
-                                    project
-  help [command]                    display help for command
-```
-
-### `n8nac workspace clear-instance`
-
-```
-Usage: n8nac workspace clear-instance [options]
-
-Clear the workspace n8n instance pin and fall back to the global active
-instance
-
-Options:
-  --json      Output workspace config as JSON
-  -h, --help  display help for command
-```
-
-### `n8nac workspace clear-project`
-
-```
-Usage: n8nac workspace clear-project [options]
-
-Clear the workspace n8n project override and fall back to the instance default
-project
-
-Options:
-  --json      Output workspace config as JSON
-  -h, --help  display help for command
-```
-
-### `n8nac workspace clear-sync-folder`
-
-```
-Usage: n8nac workspace clear-sync-folder [options]
-
-Clear the workspace n8n sync folder override and fall back to the global
-default
-
-Options:
-  --json      Output workspace config as JSON
-  -h, --help  display help for command
-```
-
-### `n8nac workspace migrate`
-
-```
-Usage: n8nac workspace migrate [options]
-
-Inspect or run required workspace migrations
-
-Options:
-  --write     Apply the migration. Without this flag, the command only reports
-              what would change.
-  --json      Output migration result as JSON
-  -h, --help  display help for command
-```
-
-### `n8nac workspace migrate-v1`
-
-```
-Usage: n8nac workspace migrate-v1 [options]
-
-Inspect or migrate a legacy v1/v2 n8nac-config.json into the v2 manager-backed
-storage model
-
-Options:
-  --write     Apply the migration. Without this flag, the command only reports
-              what would change.
-  --json      Output migration result as JSON
-  -h, --help  display help for command
-```
-
-### `n8nac workspace pin-instance`
-
-```
-Usage: n8nac workspace pin-instance [options]
-
-Pin the effective n8n instance for this workspace
-
-Options:
-  --instance-id <id>  Global n8n instance ID to pin
-  --json              Output workspace config as JSON
-  -h, --help          display help for command
-```
-
-### `n8nac workspace set-project`
-
-```
-Usage: n8nac workspace set-project [options]
-
-Set the n8n project override for this workspace from known project values
-
-Options:
-  --project-id <id>      n8n project ID to store in this workspace
-  --project-name <name>  n8n project display name to store in this workspace
-  --json                 Output workspace config as JSON
-  -h, --help             display help for command
-```
-
-### `n8nac workspace set-sync-folder`
-
-```
-Usage: n8nac workspace set-sync-folder [options] <path>
-
-Set the n8n sync folder override for this workspace
-
-Arguments:
-  path        Workspace sync folder path
-
-Options:
-  --json      Output workspace config as JSON
-  -h, --help  display help for command
+  status|get [options]  Show the effective n8n workspace context resolved by
+                        the backend
+  help [command]        display help for command
 ```
 
 ### `n8nac workspace status`
@@ -279,98 +147,6 @@ Show the effective n8n workspace context resolved by the backend
 Options:
   --json      Output effective workspace context as JSON
   -h, --help  display help for command
-```
-
----
-
-## `n8nac instance-target`
-
-### `n8nac instance-target`
-
-```
-Usage: n8nac instance-target|target [options] [command]
-
-Compatibility: manage low-level workspace targets used by environments
-
-Options:
-  -h, --help                        display help for command
-
-Commands:
-  list [options]                    List workspace instance targets
-  add [options] <name>              Compatibility: add a low-level workspace
-                                    target. Prefer `n8nac env add --base-url
-                                    ...`.
-  update [options] <name-or-id>     Update a workspace instance target
-  remove|rm [options] <name-or-id>  Remove an unused workspace instance target
-  help [command]                    display help for command
-```
-
-### `n8nac instance-target add`
-
-```
-Usage: n8nac instance-target add [options] <name>
-
-Compatibility: add a low-level workspace target. Prefer `n8nac env add
---base-url ...`.
-
-Arguments:
-  name                  Target display name
-
-Options:
-  --id <id>             Stable target ID
-  --instance-ref <id>   Global n8n-manager instance ID to reference
-  --base-url <url>      Public externalInstance n8n URL to embed without
-                        secrets
-  --description <text>  Target description
-  --json                Output target as JSON
-  -h, --help            display help for command
-```
-
-### `n8nac instance-target list`
-
-```
-Usage: n8nac instance-target list [options]
-
-List workspace instance targets
-
-Options:
-  --json      Output targets as JSON
-  -h, --help  display help for command
-```
-
-### `n8nac instance-target remove`
-
-```
-Usage: n8nac instance-target remove|rm [options] <name-or-id>
-
-Remove an unused workspace instance target
-
-Arguments:
-  name-or-id  Target name or ID
-
-Options:
-  --json      Output removed target as JSON
-  -h, --help  display help for command
-```
-
-### `n8nac instance-target update`
-
-```
-Usage: n8nac instance-target update [options] <name-or-id>
-
-Update a workspace instance target
-
-Arguments:
-  name-or-id            Target name or ID
-
-Options:
-  --name <name>         New display name
-  --instance-ref <id>   New global n8n-manager instance reference for
-                        managedInstance targets
-  --base-url <url>      New public URL for externalInstance targets
-  --description <text>  New description
-  --json                Output target as JSON
-  -h, --help            display help for command
 ```
 
 ---
@@ -407,26 +183,25 @@ Usage: n8nac env add [options] <name>
 Add an n8n workspace environment
 
 Arguments:
-  name                            Environment display name
+  name                        Environment display name
 
 Options:
-  --base-url <url>                Remote n8n URL to store in this workspace
-                                  environment
-  --managed-instance <id>         Local managed n8n instance ID to reference
-  --instance-target <name-or-id>  Compatibility: workspace target name or ID
-  --api-key <key>                 Store a local API key for --base-url without
-                                  committing it
-  --api-key-stdin                 Read the local API key for --base-url from
-                                  stdin
-  --project-id <id>               n8n project ID
-  --project-name <name>           n8n project display name
-  --sync-folder <path>            Environment sync root (default: "workflows")
-  --id <id>                       Stable environment ID
-  --folder-sync                   Enable folder sync for this environment
-  --custom-nodes-path <path>      Custom nodes path for this environment
-  --description <text>            Environment description
-  --json                          Output environment as JSON
-  -h, --help                      display help for command
+  --base-url <url>            Remote n8n URL to store in this workspace
+                              environment
+  --managed-instance <id>     Local managed n8n instance ID to reference
+  --api-key <key>             Store a local API key for --base-url without
+                              committing it
+  --api-key-stdin             Read the local API key for --base-url from stdin
+  --project-id <id>           n8n project ID
+  --project-name <name>       n8n project display name
+  --workflows-path <path>     Directory that contains this environment
+                              workflows
+  --id <id>                   Stable environment ID
+  --folder-sync               Enable folder sync for this environment
+  --custom-nodes-path <path>  Custom nodes path for this environment
+  --description <text>        Environment description
+  --json                      Output environment as JSON
+  -h, --help                  display help for command
 ```
 
 ### `n8nac env auth`
@@ -512,27 +287,26 @@ Usage: n8nac env update [options] <name-or-id>
 Update a workspace environment
 
 Arguments:
-  name-or-id                      Environment name or ID
+  name-or-id                  Environment name or ID
 
 Options:
-  --name <name>                   New display name
-  --base-url <url>                Move this environment to a remote n8n URL
-  --managed-instance <id>         Move this environment to a local managed n8n
-                                  instance
-  --instance-target <name-or-id>  Workspace instance target name or ID
-  --api-key <key>                 Store a local API key for --base-url without
-                                  committing it
-  --api-key-stdin                 Read the local API key for --base-url from
-                                  stdin
-  --project-id <id>               n8n project ID
-  --project-name <name>           n8n project display name
-  --sync-folder <path>            Environment sync root
-  --folder-sync                   Enable folder sync for this environment
-  --no-folder-sync                Disable folder sync for this environment
-  --custom-nodes-path <path>      Custom nodes path for this environment
-  --description <text>            Environment description
-  --json                          Output environment as JSON
-  -h, --help                      display help for command
+  --name <name>               New display name
+  --base-url <url>            Move this environment to a remote n8n URL
+  --managed-instance <id>     Move this environment to a local managed n8n
+                              instance
+  --api-key <key>             Store a local API key for --base-url without
+                              committing it
+  --api-key-stdin             Read the local API key for --base-url from stdin
+  --project-id <id>           n8n project ID
+  --project-name <name>       n8n project display name
+  --workflows-path <path>     Directory that contains this environment
+                              workflows
+  --folder-sync               Enable folder sync for this environment
+  --no-folder-sync            Disable folder sync for this environment
+  --custom-nodes-path <path>  Custom nodes path for this environment
+  --description <text>        Environment description
+  --json                      Output environment as JSON
+  -h, --help                  display help for command
 ```
 
 ---
@@ -811,24 +585,29 @@ Options:
 ### `n8nac promote`
 
 ```
-Usage: n8nac promote [options] <path>
+Usage: n8nac promote [options] [path]
 
 Promote a local workflow file from one workspace environment to another
 
 Arguments:
-  path                  Workflow file path inside the source environment sync
-                        scope
+  path                       Workflow file path inside the source environment
+                             workflowsPath. Omit to promote all source
+                             workflows.
 
 Options:
-  --from <environment>  Source environment name or ID
-  --to <environment>    Target environment name or ID
-  --dry-run             Show the planned promotion without writing or pushing
-  --no-push             Copy/adapt the workflow into the target environment
-                        without pushing
-  --overwrite           Overwrite the target local workflow file if it already
-                        exists
-  --json                Output promotion result as JSON
-  -h, --help            display help for command
+  --from <environment>       Source environment name or ID
+  --to <environment>         Target environment name or ID
+  --dry-run                  Show the planned promotion without writing or
+                             pushing
+  --no-push                  Copy/adapt the workflow into the target
+                             environment without pushing
+  --overwrite                Overwrite the target local workflow file if it
+                             already exists
+  --promotion-config <path>  Promotion config path (default:
+                             "n8nac-promotion.json")
+  --no-interactive           Disable interactive credential mapping prompts
+  --json                     Output promotion result as JSON
+  -h, --help                 display help for command
 ```
 
 ---
@@ -1517,4 +1296,4 @@ Options:
 
 ---
 
-_End of generated reference. 2.2.1_
+_End of generated reference. 2.3.6_

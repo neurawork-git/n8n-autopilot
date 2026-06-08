@@ -7,10 +7,10 @@ dist/
 .env
 .env.local
 
-# n8nac >= 2.2 stores workspace/instance config in user home
+# n8nac >= 2.3 stores environment/instance config in user home
 # (~/n8nac-config.json + ~/.n8n-manager/), NOT in the repo. Nothing to ignore
 # locally for config. Legacy in-repo n8nac-config.json (from n8nac < 2.2) is
-# kept gitignored here for safety during the workspace migrate-v1 transition.
+# kept gitignored here as a safety net (delete it manually if found).
 n8nac-config.json
 n8nac-instance.json
 
