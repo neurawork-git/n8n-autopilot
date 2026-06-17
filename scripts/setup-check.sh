@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-REFERENCE_N8NAC_VERSION="2.3.6"
+REFERENCE_N8NAC_VERSION="2.4.0"
 MIN_N8NAC_VERSION="2.3.0"
 
 # n8n-autopilot 4.x is CLI-only — no MCP server is required or used. The
