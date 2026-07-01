@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-REFERENCE_N8NAC_VERSION="2.3.6"
+REFERENCE_N8NAC_VERSION="2.4.0"
 MIN_N8NAC_VERSION="2.3.0"
 
 # n8n-autopilot 4.x is CLI-only — no MCP server is required or used. The
@@ -149,16 +149,17 @@ fi
 # n8n-autopilot 4.x delegates schema research / authoring guidance to Etienne's
 # `n8n-architect` skill, shipped via the `n8n-as-code@n8nac-marketplace` plugin.
 # It is strongly recommended but not strictly required.
+PLUGIN_PATTERN='"n8n-as-code@n8nac-marketplace"[[:space:]]*:[[:space:]]*true'
+PROJECT_SETTINGS=".claude/settings.json"
 USER_SETTINGS="$HOME/.claude/settings.json"
-if [ -f "$USER_SETTINGS" ]; then
-  if grep -q '"n8n-as-code@n8nac-marketplace"[[:space:]]*:[[:space:]]*true' "$USER_SETTINGS" 2>/dev/null; then
-    echo "OK: companion plugin n8n-as-code@n8nac-marketplace enabled"
-  else
-    echo "WARN: companion plugin n8n-as-code (Etienne Lescot) not enabled — install it for full UX:"
-    echo "  claude plugin marketplace add EtienneLescot/n8n-as-code"
-    echo "  claude plugin install n8n-as-code@n8nac-marketplace"
-    WARNINGS=$((WARNINGS + 1))
-  fi
+if grep -q "$PLUGIN_PATTERN" "$PROJECT_SETTINGS" 2>/dev/null || \
+   grep -q "$PLUGIN_PATTERN" "$USER_SETTINGS" 2>/dev/null; then
+  echo "OK: companion plugin n8n-as-code@n8nac-marketplace enabled"
+else
+  echo "WARN: companion plugin n8n-as-code (Etienne Lescot) not enabled — install it for full UX:"
+  echo "  claude plugin marketplace add EtienneLescot/n8n-as-code"
+  echo "  claude plugin install n8n-as-code@n8nac-marketplace"
+  WARNINGS=$((WARNINGS + 1))
 fi
 
 # ── 5. n8n API connectivity (host pulled from workspace status, not file) ────
