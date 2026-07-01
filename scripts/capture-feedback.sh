@@ -25,8 +25,21 @@ let d=""; process.stdin.on("data",c=>d+=c); process.stdin.on("end",()=>{
     const tp  = hook.transcript_path || "";
     // Transcript missing/unreadable -> exit silently (cannot compute signals).
     if (!tp || !fs.existsSync(tp)) process.exit(0);
+    // Only scan real conversation turns. Skill-listing + SessionStart-hook injections arrive
+    // as type:"attachment"/"system" lines and contain the taxonomy keywords verbatim
+    // (mcpTrigger, pull-schemas, non-HTTP, --include-data) -> pure false positives. Filter them out.
     let text="";
-    try { text = fs.readFileSync(tp,"utf8"); } catch(e) { process.exit(0); }
+    try {
+      const raw = fs.readFileSync(tp,"utf8");
+      for (const line of raw.split("\n")) {
+        if (!line) continue;
+        let o; try { o = JSON.parse(line); } catch(e) { continue; }
+        if (o.type !== "user" && o.type !== "assistant") continue;
+        text += JSON.stringify(o.message || "") + "\n";
+      }
+    } catch(e) { process.exit(0); }
+    // ponytail: residual within-line dup (same text in content+stdout) left uncounted;
+    // fix per-field extraction only if a signal noise floor proves it matters.
 
     // Anchored signal heuristics — frozen taxonomy from real production-run analysis.
     // Bare keywords ("BLOCKED","CONFLICT") are AVOIDED: they collide with n8n node JSON
@@ -75,7 +88,19 @@ let d=""; process.stdin.on("data",c=>d+=c); process.stdin.on("end",()=>{
 
     const store = path.join(cwd,".n8n-autopilot","feedback");
     fs.mkdirSync(store,{recursive:true});
-    fs.appendFileSync(path.join(store,"events.ndjson"), JSON.stringify(rec)+"\n");
+    const file = path.join(store,"events.ndjson");
+    // One UNSYNCED event per session, last-write-wins: a resumed session re-scans a superset
+    // of the transcript, so the later SessionEnd counts already include the earlier ones.
+    // Drop any prior unsynced event for this session; keep synced history intact.
+    let keep = [];
+    try {
+      keep = fs.readFileSync(file,"utf8").split("\n").filter(Boolean).filter(l => {
+        try { const p = JSON.parse(l); return p.sessionId !== rec.sessionId || p.synced === true; }
+        catch(e) { return true; }
+      });
+    } catch(e) {}
+    keep.push(JSON.stringify(rec));
+    fs.writeFileSync(file, keep.join("\n")+"\n");
   } catch(e) { /* fire-and-forget: never disrupt shutdown */ }
   process.exit(0);
 });

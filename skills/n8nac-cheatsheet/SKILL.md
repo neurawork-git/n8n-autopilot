@@ -70,7 +70,7 @@ allowed-tools: Read, Grep
 | Test webhook/chat/form (POST body) | `npx n8nac test <id> --data '<json>'` |
 | Test webhook (GET query string) | `npx n8nac test <id> --query '<json>'` |
 | Test against production URL (workflow must be active) | `npx n8nac test <id> --prod --data '<json>'` |
-| List recent executions for a workflow | `npx n8nac execution list --workflow <id> --limit 10` |
+| List recent executions for a workflow | `npx n8nac execution list --workflow-id <id> --limit 10` |
 | Get one execution's full I/O | `npx n8nac execution get <executionId> --include-data` |
 | Get one execution's metadata only | `npx n8nac execution get <executionId>` |
 

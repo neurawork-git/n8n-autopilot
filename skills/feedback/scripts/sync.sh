@@ -3,11 +3,12 @@
 # Transport = a single path (gh issue create); no fallback chain. On any failure: exit 1, mark nothing.
 # Invoked by the /n8n-autopilot:feedback skill ONLY after the user confirms (PII consent gate).
 #
-# Records go to the INTERNAL repo. Body carries the NDJSON records (the "internal-repo file" content)
-# + a human summary. Pipeline: see feedback SKILL.md.
+# Records go to the PUBLIC plugin repo. Body carries the NDJSON records + a human summary.
+# repoLabel (a customer basename) is PII on a public repo -> stripped from title, summary, and
+# the raw NDJSON dump before any push. Pipeline: see feedback SKILL.md.
 set -u
 
-REPO="neurawork-git/n8n-autopilot-internal"
+REPO="neurawork-git/n8n-autopilot"
 WORKSPACE="${1:-$PWD}"
 STORE="$WORKSPACE/.n8n-autopilot/feedback"
 
@@ -39,21 +40,20 @@ for (const f of ["events.ndjson","process.ndjson"]) {
   }
 }
 if (!recs.length) { process.stdout.write("0"); process.exit(0); }
-// Human summary: aggregate signal counts + repo labels (no PII).
-const agg={}, labels=new Set(); let processN=0;
+// Human summary: aggregate signal counts only. Target repo is PUBLIC -> repoLabel
+// (customer basename) is stripped from the summary AND the raw dump.
+const agg={}; let processN=0;
 for (const r of recs) {
-  if (r.repoLabel) labels.add(r.repoLabel);
   if (r.kind==="event" && r.signals) for (const [k,v] of Object.entries(r.signals)) agg[k]=(agg[k]||0)+v;
   if (r.kind==="process") processN++;
 }
 const ranked=Object.entries(agg).sort((a,b)=>b[1]-a[1]);
 let md="## Autopilot feedback — "+recs.length+" record(s)\n\n";
-md+="- Repos: "+[...labels].join(", ")+"\n";
 md+="- Process (interview) records: "+processN+"\n";
 md+="- Aggregated friction signals:\n";
 for (const [k,v] of ranked) md+="  - `"+k+"`: "+v+"\n";
 md+="\n<details><summary>Raw records (NDJSON)</summary>\n\n```ndjson\n";
-md+=recs.map(r=>JSON.stringify(r)).join("\n")+"\n```\n</details>\n";
+md+=recs.map(r=>{const {repoLabel,...rest}=r; return JSON.stringify(rest);}).join("\n")+"\n```\n</details>\n";
 fs.writeFileSync(bodyPath, md);
 process.stdout.write(String(recs.length));
 ' "$STORE" "$BODY" 2>/dev/null || echo "ERR")
@@ -93,7 +93,8 @@ rm -f "$RECORDS_TMP"
 # Ensure the label exists (idempotent).
 gh label create feedback --repo "$REPO" --color B60205 --description "autopilot run feedback" >/dev/null 2>&1 || true
 
-TITLE="feedback: $(node -e 'const fs=require("fs"),p=require("path");const s=process.argv[1];let labels=new Set();for(const f of ["events.ndjson","process.ndjson"]){const fp=p.join(s,f);if(!fs.existsSync(fp))continue;for(const l of fs.readFileSync(fp,"utf8").split("\n")){const t=l.trim();if(!t)continue;try{const r=JSON.parse(t);if(r.synced!==true&&r.repoLabel)labels.add(r.repoLabel);}catch(e){}}}process.stdout.write([...labels].join(",")||"unknown");' "$STORE") ($COUNT records)"
+# PUBLIC repo: no repoLabel in the title (customer-name leak). Count only.
+TITLE="feedback: $COUNT records"
 
 URL=$(gh issue create --repo "$REPO" --label feedback --title "$TITLE" --body-file "$BODY" 2>&1)
 RC=$?

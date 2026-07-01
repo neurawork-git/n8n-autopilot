@@ -37,6 +37,11 @@
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-feedback-pending.sh --quiet 2>&1 || true",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-plugin-version.sh 2>&1 || true",
+            "timeout": 10
           }
         ]
       }
@@ -58,7 +63,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "INPUT=\"$CLAUDE_TOOL_INPUT\"; if echo \"$INPUT\" | grep -qE '(curl|wget).*(/api/v1|n8n\\.cloud|n8n\\.io)' 2>/dev/null; then if echo \"$INPUT\" | grep -qE '/api/v1/data-tables' 2>/dev/null; then : ; else echo 'BLOCKED: Use n8nac CLI instead of direct API calls via curl/wget. (Carve-out: /api/v1/data-tables is allowed — see /n8n-autopilot:data-tables skill.)' >&2; exit 2; fi; fi",
+            "command": "INPUT=\"$CLAUDE_TOOL_INPUT\"; if echo \"$INPUT\" | grep -qE '(curl|wget|urllib|Invoke-RestMethod|requests\\.).*(/api/v1|n8n\\.cloud|n8n\\.io)' 2>/dev/null; then if echo \"$INPUT\" | grep -qE '/api/v1/data-tables' 2>/dev/null; then : ; else echo 'BLOCKED: Use n8nac CLI instead of direct API calls (curl/wget/urllib/Invoke-RestMethod). Carve-out: /api/v1/data-tables is allowed — loop the curl from the /n8n-autopilot:data-tables skill, do not switch HTTP tool to dodge this.' >&2; exit 2; fi; fi",
             "timeout": 5
           },
           {

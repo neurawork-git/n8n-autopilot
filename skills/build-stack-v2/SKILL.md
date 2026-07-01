@@ -44,6 +44,10 @@ Execute Workflow node needs the child's real `workflowId`. A failed child **halt
    - Starts with `extend ` / names an existing stack + a change → **EXTEND**.
    - Otherwise (a use-case description) → **GREENFIELD**.
    - If ambiguous or empty, ask the user (or point them at `/n8n-autopilot:stack-intake`).
+   - **Greenfield auto-detect:** before decomposing, the script checks `docs/*.architecture.md` for a
+     stack that already covers the use-case. On a match it returns `status: 'needs-decision'` instead
+     of rebuilding — relay the `hint` (re-run as EXTEND with the change, or pass `mode: 'greenfield'`
+     to force a fresh build). This stops the silent rebuild-over-a-working-stack case.
 2. **Resolve the three sub-script paths.** They are siblings of this skill inside the plugin install:
    - `buildScript` = `<plugin>/skills/build-workflow-v2/build.workflow.js`
    - `editScript`  = `<plugin>/skills/build-workflow-v2/edit.workflow.js`
@@ -100,6 +104,9 @@ sub-WFs / orchestrator rewiring via `edit.workflow.js`) → Report (update the d
 
 The script returns one of:
 - `{ status: 'aborted', reason }` — missing input (no description / no change / no buildScript).
+- `{ status: 'needs-decision', reason: 'existing-stack', stackSlug, entryWorkflowId, detail, hint }` —
+  greenfield was requested but a matching stack already exists locally. Relay the `hint` verbatim; do
+  NOT rebuild. Re-run as EXTEND, or pass `mode: 'greenfield'` to force.
 - `{ status: 'failed', stage, reason, … }` — a structural failure (dependency cycle in the plan).
 - `{ status: 'partial', … attention }` — some sub-WFs built green, a failure halted the rest. Surface
   `attention` + the per-sub-WF list verbatim; offer to fix the failing sub-WF and resume.

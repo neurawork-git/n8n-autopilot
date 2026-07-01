@@ -150,7 +150,7 @@ npx n8nac credential create --type slack --name "My Slack"  # create new
 npx n8nac credential delete <id>                 # delete credential
 
 # Execution Debugging
-npx n8nac execution list --workflow <id> --status error   # failed executions
+npx n8nac execution list --workflow-id <id> --status error   # failed executions
 npx n8nac execution get <executionId> --include-data      # full execution data
 ```
 

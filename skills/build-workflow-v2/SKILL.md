@@ -34,6 +34,7 @@ The orchestrator scripts hold **only** control flow + schemas + one-line tasks. 
 | `n8n-comprehender` | pull/read existing workflow, summarize shape + change site (EDIT) | read + Bash |
 | `n8n-author` | write / edit / fix the `.workflow.ts` | read/write + Bash |
 | `n8n-validator` | `validate --strict --json` gate | read + Bash |
+| `workflow-reviewer` | design-quality gate (HTTP-in-Code, masked errors, AI sub-node miswiring) the validator can't catch | read + Bash |
 | `n8n-deployer` | drift-aware `push --verify` gate | read + Bash |
 | `n8n-tester` | test-plan classify, credential check, live test, execution inspect | read + Bash |
 
@@ -65,9 +66,9 @@ Both scripts and both modes reuse the same agents — change a role once, both f
 
 ## Phases
 
-**Greenfield** (`build.workflow.js`): Research (plan + per-node param fan-out) → Author → Validate gate (≤3) → Deploy gate (`push --verify`) → Test (Path A live-test loop / Path B handoff).
+**Greenfield** (`build.workflow.js`): Research (plan + per-node param fan-out) → Author → Validate gate (≤3) → Review gate (≤2, design-quality blockers) → Deploy gate (`push --verify`) → Test (Path A live-test loop / Path B handoff).
 
-**Edit** (`edit.workflow.js`): Comprehend (local-first; refresh to remote base, summarize change site) → Verify new node types → Patch (preserve the rest, keep the id) → Validate gate (≤3) → Deploy gate (drift-safe) → Test.
+**Edit** (`edit.workflow.js`): Comprehend (local-first; refresh to remote base, summarize change site) → Verify new node types → Patch (preserve the rest, keep the id) → Validate gate (≤3) → Review gate (≤2, design-quality blockers, change-site only) → Deploy gate (drift-safe) → Test.
 
 > **Local-mirror invariant (EDIT).** The repo is expected to mirror remote workflows locally (pulls enforced). The edit flow is therefore **local-first**: `n8n-comprehender` prefers the local file and only pulls to reach remote base if the file is stale/missing (and flags it). Because it refreshes to remote base *before* patching, a push-time conflict only happens if remote changed *during* the run — in which case the deploy gate fails cleanly (no clobber) and asks for a re-run.
 
@@ -75,8 +76,8 @@ Both scripts and both modes reuse the same agents — change a role once, both f
 
 The scripts return one of:
 - `{ status: 'aborted', reason }` — missing input.
-- `{ status: 'failed', stage, … }` — a gate failed (validate after 3 cycles / deploy drift). Surface stage + errors + any `hint` verbatim, offer next step.
-- `{ status: 'success', mode, workflowId, filePath, url, triggerType, hasMcpTrigger, validateCycles, test, … }`.
+- `{ status: 'failed', stage, … }` — a gate failed (validate after 3 cycles / review after 2 cycles with unresolved `blockers` / deploy drift). Surface stage + errors/blockers + any `hint` verbatim, offer next step.
+- `{ status: 'success', mode, workflowId, filePath, url, triggerType, hasMcpTrigger, validateCycles, reviewWarnings, test, … }`. Surface `reviewWarnings` (advisory, non-blocking) if present.
 
 Render success:
 ```
@@ -84,7 +85,7 @@ Render success:
 
 **ID:** {workflowId}   **URL:** {url}   **File:** {filePath}
 **Trigger:** {triggerType}{ mcp note if hasMcpTrigger }
-**Gates:** validate passed (cycles: {validateCycles}) · push --verify ✓{ edit: · localMirrorHeld / refreshed }
+**Gates:** validate passed (cycles: {validateCycles}) · review passed{ if reviewWarnings: ` (${reviewWarnings.length} warning(s))` } · push --verify ✓{ edit: · localMirrorHeld / refreshed }
 { if missingSchemas: "⚠ Missing schemas: <list> — /n8n-autopilot:pull-schemas" }
 { if credentialsMissing: "⚠ Class-A credentials missing: <list> (informational)" }
 

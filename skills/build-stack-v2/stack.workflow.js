@@ -53,6 +53,7 @@ const CURRENTSTACK_SCHEMA = {
   },
 }
 const DOCWRITE_SCHEMA = { type: 'object', required: ['written', 'filePath'], additionalProperties: false, properties: { written: { type: 'boolean' }, filePath: { type: 'string' } } }
+const DETECT_SCHEMA = { type: 'object', required: ['existingStackFound'], additionalProperties: false, properties: { existingStackFound: { type: 'boolean' }, stackSlug: { type: ['string', 'null'] }, entryWorkflowId: { type: ['string', 'null'] }, matchReason: { type: 'string' } } }
 
 // ---- args (arrives as JSON string from the runtime — parse defensively) ----
 const A = (() => { if (typeof args !== 'string') return args || {}; try { return JSON.parse(args) } catch (e) { return { description: args } } })()
@@ -84,6 +85,15 @@ const contractsFor = (slug, handovers) => ({
   input: handovers.filter((h) => h.to === slug).map((h) => `${h.from}→: ${h.inputContract}`).join(' | ') || '(external trigger payload)',
   output: handovers.filter((h) => h.from === slug).map((h) => `→${h.to}: ${h.outputContract}`).join(' | ') || '(stack result)',
 })
+// safe(): a schema'd subagent that ends WITHOUT calling StructuredOutput (or dies terminally) crashes
+// the whole run with an opaque error. One retry, then a graceful fallback. ponytail: 2 attempts max.
+async function safe(prompt, opts, fallback) {
+  for (let i = 1; i <= 2; i++) {
+    try { const r = await agent(prompt, opts); if (r != null) return r } catch (e) { log(`agent(${opts.phase || '?'}) attempt ${i}/2 failed: ${String((e && e.message) || e).slice(0, 140)}`) }
+  }
+  log(`agent(${opts.phase || '?'}) produced no output after 2 attempts -> graceful fallback`)
+  return fallback
+}
 
 // Compose the central architecture markdown DETERMINISTICALLY (mermaid + tables) — the writer agent
 // only writes the bytes; no model judgement in the doc shape.
@@ -155,12 +165,29 @@ async function buildSub(sub, plan, idMap) {
 // GREENFIELD
 // ===================================================================
 if (!isExtend) {
+  // ---- DETECT (F-fix): don't silently rebuild a stack that already exists locally ----
+  // Observed: greenfield fired with a description while a working stack was live -> full rebuild.
+  // ponytail: detection reads the committed docs/*.architecture.md only; a remote-only stack whose
+  // doc was never committed won't be caught (acceptable ceiling — pass mode:'extend' explicitly).
+  if (A.mode !== 'greenfield') {  // explicit mode:'greenfield' force-skips the check
+    const det = await safe(
+      `A greenfield stack build was requested for this use-case:\n"""${description}"""\nBefore building from scratch, check the local repo for an ALREADY-BUILT stack that satisfies it: glob \`docs/*.architecture.md\`, read each match's overview, and compare. Set existingStackFound=true ONLY if an existing stack clearly already covers this use-case (not merely a related one).`,
+      { schema: DETECT_SCHEMA, phase: 'Plan' },
+      { existingStackFound: false }
+    )
+    if (det.existingStackFound) {
+      return { status: 'needs-decision', reason: 'existing-stack', stackSlug: det.stackSlug, entryWorkflowId: det.entryWorkflowId, detail: det.matchReason,
+        hint: `A stack matching this use-case already exists (docs/${det.stackSlug || '<slug>'}.architecture.md). Re-run build-stack-v2 in EXTEND mode with your change, or pass mode:'greenfield' to force a fresh build.` }
+    }
+  }
   // ---- PLAN ----
   phase('Plan')
-  const plan = await agent(
+  const plan = await safe(
     `Decompose this end-to-end use case into a stack of sub-workflows. Follow your DECOMPOSE rules; fix every handover contract; set dependsOn so the graph is acyclic and buildable bottom-up.\nUse case (PRP):\n"""${description}"""`,
-    { agentType: 'n8n-autopilot:n8n-stack-architect', schema: STACKPLAN_SCHEMA, model: 'opus', phase: 'Plan' }
+    { agentType: 'n8n-autopilot:n8n-stack-architect', schema: STACKPLAN_SCHEMA, model: 'opus', phase: 'Plan' },
+    null
   )
+  if (!plan) return { status: 'failed', stage: 'plan', error: 'stack-architect produced no decomposition after retries' }
   const slugs = plan.subWorkflows.map((s) => s.slug)
   const order = topoSort(slugs, (slug) => (plan.subWorkflows.find((s) => s.slug === slug)?.dependsOn) || [])
   if (!order) return { status: 'failed', stage: 'plan', reason: 'dependency cycle in stackPlan', stackPlan: plan }
@@ -226,10 +253,12 @@ if (syncScript) {
 
 // ---- COMPREHEND ----
 phase('Comprehend')
-const cur = await agent(
+const cur = await safe(
   `Reconstruct the existing stack's call-graph from the local mirror's executeWorkflow references.${target ? ` Target stack (id or name hint): "${target}".` : ''} Requested change (for scoping): """${change}""". Keep only the connected component(s) reachable from the relevant entry trigger.`,
-  { agentType: 'n8n-autopilot:n8n-stack-comprehender', schema: CURRENTSTACK_SCHEMA, phase: 'Comprehend' }
+  { agentType: 'n8n-autopilot:n8n-stack-comprehender', schema: CURRENTSTACK_SCHEMA, phase: 'Comprehend' },
+  null
 )
+if (!cur) return { status: 'failed', stage: 'comprehend', error: 'stack-comprehender produced no call-graph after retries', target }
 if (cur.missingLocal && cur.missingLocal.length) log(`WARNING mirror gap: ${cur.missingLocal.length} referenced workflowId(s) have no local file: ${cur.missingLocal.join(', ')}. Re-run mirror-sync.`)
 if (cur.docDrift) log(`Doc drift vs reality: ${cur.docDrift}`)
 log(`Current stack "${cur.stackSlug}": ${cur.subWorkflows.length} sub-WF(s), ${cur.edges.length} edge(s), entry=${cur.entry}`)
@@ -237,10 +266,12 @@ log(`Current stack "${cur.stackSlug}": ${cur.subWorkflows.length} sub-WF(s), ${c
 // ---- DELTA-PLAN ----
 phase('Plan')
 const curBlock = `currentStack:\n  entry: ${cur.entry}\n  subWorkflows: ${cur.subWorkflows.map((s) => `${s.slug}(${s.workflowId},${s.kind})`).join(', ')}\n  edges: ${cur.edges.map((e) => `${e.from}->${e.to}`).join(', ')}`
-const delta = await agent(
+const delta = await safe(
   `Plan the DELTA for this change against the existing stack.\nChange:\n"""${change}"""\n${curBlock}\nClassify each sub-WF new/changed/unchanged; new ones get full sub-WF specs (slug/name/trigger/kind/purpose/dependsOn); changed ones get {slug, workflowId, changeDescription}; name any handover changes (both producer + consumer).`,
-  { agentType: 'n8n-autopilot:n8n-stack-architect', schema: DELTA_SCHEMA, model: 'opus', phase: 'Plan' }
+  { agentType: 'n8n-autopilot:n8n-stack-architect', schema: DELTA_SCHEMA, model: 'opus', phase: 'Plan' },
+  null
 )
+if (!delta) return { status: 'failed', stage: 'plan', error: 'stack-architect produced no delta after retries', stackSlug: cur.stackSlug }
 log(`Delta: ${delta.newSubWorkflows.length} new, ${delta.changedSubWorkflows.length} changed, ${delta.handoverChanges.length} handover change(s)`)
 
 // idMap seeded with EXISTING sub-WF ids so new orchestrators can reference existing children.

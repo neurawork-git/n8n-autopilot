@@ -1,6 +1,6 @@
 ---
 name: feedback
-description: Review the current n8n-autopilot session for learnings (operational friction + workflow design anti-patterns), strip all PII, and push the redacted insights centrally to the internal repo as a GitHub issue. Side-effecting on `sync`/`review`-push — shows the redacted result and requires explicit confirmation.
+description: Review the current n8n-autopilot session for learnings (operational friction + workflow design anti-patterns), strip all PII, and push the redacted insights centrally to the public plugin repo as a GitHub issue. Side-effecting on `sync`/`review`-push — shows the redacted result and requires explicit confirmation.
 argument-hint: "[review | interview | show | sync]"
 user-invocable: true
 allowed-tools: Read, Grep, Glob, Bash(bash:*), Bash(node:*), Bash(gh:*)
@@ -82,7 +82,7 @@ node "$CLAUDE_PLUGIN_ROOT/skills/feedback/scripts/redact-check.js" .n8n-autopilo
 ### 7. Show every pending record + confirm
 
 Display all pending records verbatim (run `show`). State the target
-(`neurawork-git/n8n-autopilot-internal`, a GitHub issue). Require an explicit **"ja / bestätigt"**.
+(`neurawork-git/n8n-autopilot`, a public GitHub issue — `repoLabel`/customer name stripped). Require an explicit **"ja / bestätigt"**.
 
 ### 8. Push
 

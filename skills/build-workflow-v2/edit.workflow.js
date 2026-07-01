@@ -7,6 +7,7 @@ export const meta = {
     { title: 'Verify', detail: 'n8n-node-verifier param fan-out for any newly introduced node types', model: 'sonnet' },
     { title: 'Patch', detail: 'n8n-author applies the change, preserves the rest', model: 'opus' },
     { title: 'Validate', detail: 'n8n-validator hard gate (max 3 fix cycles)', model: 'sonnet' },
+    { title: 'Review', detail: 'workflow-reviewer design-quality gate (max 2 fix cycles)', model: 'sonnet' },
     { title: 'Deploy', detail: 'n8n-deployer drift-safe push --verify hard gate', model: 'sonnet' },
     { title: 'Test', detail: 'n8n-tester classify -> Path A live test loop / Path B handoff', model: 'sonnet' },
   ],
@@ -33,6 +34,7 @@ const NODE_CONTRACT_SCHEMA = {
 }
 const AUTHOR_SCHEMA = { type: 'object', required: ['filePath', 'written'], additionalProperties: false, properties: { filePath: { type: 'string' }, written: { type: 'boolean' }, summary: { type: 'string' } } }
 const VALIDATE_SCHEMA = { type: 'object', required: ['passed', 'errors'], additionalProperties: false, properties: { passed: { type: 'boolean' }, errors: { type: 'array', items: { type: 'string' } } } }
+const REVIEW_SCHEMA = { type: 'object', required: ['blockers', 'warnings'], additionalProperties: false, properties: { blockers: { type: 'array', items: { type: 'string' } }, warnings: { type: 'array', items: { type: 'string' } } } }
 const PUSH_SCHEMA = { type: 'object', required: ['pushed', 'verified'], additionalProperties: false, properties: { pushed: { type: 'boolean' }, verified: { type: 'boolean' }, workflowId: { type: ['string', 'null'] }, driftStatus: { type: ['string', 'null'] }, error: { type: ['string', 'null'] } } }
 const TESTPLAN_SCHEMA = { type: 'object', required: ['triggerType', 'testable'], additionalProperties: false, properties: { triggerType: { type: 'string' }, testable: { type: 'boolean' }, suggestedPayload: { type: ['string', 'null'] }, presentUrl: { type: ['string', 'null'] } } }
 const TEST_SCHEMA = { type: 'object', required: ['outcome'], additionalProperties: false, properties: { outcome: { type: 'string', enum: ['success', 'classA', 'classB', 'runtime-state', 'error'] }, executionId: { type: ['string', 'null'] }, executionStatus: { type: ['string', 'null'] }, errors: { type: 'array', items: { type: 'string' } }, outputSample: { type: 'string' } } }
@@ -44,12 +46,25 @@ const change = A.change || A.description || ''
 const userTestData = A.testData || ''
 if (!target || !change) { log('Need args.target (workflow id/name) and args.change (what to change).'); return { status: 'aborted', reason: 'missing-target-or-change' } }
 
+// safe(): a schema'd subagent that ends WITHOUT calling StructuredOutput (or dies terminally) crashes
+// the whole run with an opaque error. One retry, then a graceful fallback into the existing gate-failure
+// handling. ponytail: 2 attempts max — rare failures, double-cost worst case beats an opaque abort.
+async function safe(prompt, opts, fallback) {
+  for (let i = 1; i <= 2; i++) {
+    try { const r = await agent(prompt, opts); if (r != null) return r } catch (e) { log(`agent(${opts.phase || '?'}) attempt ${i}/2 failed: ${String((e && e.message) || e).slice(0, 140)}`) }
+  }
+  log(`agent(${opts.phase || '?'}) produced no output after 2 attempts -> graceful fallback`)
+  return fallback
+}
+
 // ===== PHASE 1 — COMPREHEND (local-first, refresh to remote base) =====
 phase('Comprehend')
-const ctx = await agent(
+const ctx = await safe(
   `An existing n8n workflow needs editing.\nTarget (id or name): "${target}"\nRequested change: """${change}"""\nFollow your procedure. The repo is expected to mirror remote workflows locally — prefer the LOCAL file. Detect drift (fetch + list --search --json); if the local file is stale or missing, pull to reach remote base and set refreshed=true (and localPresent accordingly). Summarize the current shape, name the change site + risks, and list any node types the change will INTRODUCE in newNodeTypes.`,
-  { agentType: 'n8n-autopilot:n8n-comprehender', schema: COMPREHEND_SCHEMA, phase: 'Comprehend' }
+  { agentType: 'n8n-autopilot:n8n-comprehender', schema: COMPREHEND_SCHEMA, phase: 'Comprehend' },
+  null
 )
+if (!ctx) return { status: 'failed', stage: 'comprehend', error: 'comprehender produced no output after retries', target }
 if (!ctx.localPresent) log(`NOTE: local mirror missing for ${ctx.workflowId} — pulled fresh (mirror invariant was broken).`)
 if (ctx.driftStatus && !['TRACKED', 'LOCAL_ONLY', null].includes(ctx.driftStatus)) log(`Drift before edit: ${ctx.driftStatus} -> refreshed=${ctx.refreshed}`)
 const FILE = ctx.filePath
@@ -68,9 +83,10 @@ if (ctx.newNodeTypes && ctx.newNodeTypes.length) {
 
 // ===== PHASE 3 — PATCH =====
 phase('Patch')
-const patched = await agent(
+const patched = await safe(
   `Apply this change to the EXISTING workflow file ${FILE}:\n"""${change}"""\nChange site (from comprehension): ${ctx.changeSite}\nPreserve everything else (id, name, unrelated nodes/links). Verified contracts for any new node types:\n${contractBlock}\nDo NOT change the @workflow id. Use Edit (not full rewrite) where possible.`,
-  { agentType: 'n8n-autopilot:n8n-author', schema: AUTHOR_SCHEMA, model: 'opus', phase: 'Patch' }
+  { agentType: 'n8n-autopilot:n8n-author', schema: AUTHOR_SCHEMA, model: 'opus', phase: 'Patch' },
+  { written: false, summary: 'patch agent produced no output' }
 )
 if (!patched.written) return { status: 'failed', stage: 'patch', detail: patched.summary || 'no edit written', filePath: FILE }
 
@@ -78,17 +94,30 @@ if (!patched.written) return { status: 'failed', stage: 'patch', detail: patched
 phase('Validate')
 let vRes = null, vCycle = 0
 while (true) {
-  vRes = await agent(`Validate the file: ${FILE}`, { agentType: 'n8n-autopilot:n8n-validator', schema: VALIDATE_SCHEMA, phase: 'Validate' })
+  vRes = await safe(`Validate the file: ${FILE}`, { agentType: 'n8n-autopilot:n8n-validator', schema: VALIDATE_SCHEMA, phase: 'Validate' }, { passed: false, errors: ['validator produced no output'] })
   if (vRes.passed) { log(`Validate passed (cycle ${vCycle})`); break }
   vCycle++
   if (vCycle > 3) return { status: 'failed', stage: 'validate', cycles: vCycle - 1, errors: vRes.errors, filePath: FILE }
   log(`Validate failed (cycle ${vCycle}) -> fixing`)
-  await agent(`Fix these validation errors in ${FILE} (preserve the intended change):\n${vRes.errors.map((e) => '- ' + e).join('\n')}`, { agentType: 'n8n-autopilot:n8n-author', schema: AUTHOR_SCHEMA, model: 'opus', phase: 'Validate' })
+  await safe(`Fix these validation errors in ${FILE} (preserve the intended change):\n${vRes.errors.map((e) => '- ' + e).join('\n')}`, { agentType: 'n8n-autopilot:n8n-author', schema: AUTHOR_SCHEMA, model: 'opus', phase: 'Validate' }, {})
+}
+
+// ===== PHASE 4b — REVIEW GATE (design quality the validator cannot catch) =====
+phase('Review')
+let rev = null, rCycle = 0
+while (true) {
+  rev = await safe(`Review ${FILE} for DESIGN-QUALITY blockers the n8n validator does NOT catch: raw HTTP in Code nodes ($helpers.httpRequest*), continueOnFail/onError:continue that masks real errors, AI sub-nodes wired via .out().to() instead of .uses() in @links(), missing error handling on external calls. Return blockers (the "Issues (must fix)" tier — hard repo-rule violations) separately from warnings (advisory only). Do NOT re-flag schema/wiring errors the validator already gates, and do NOT flag pre-existing issues outside the change site.`, { agentType: 'n8n-autopilot:workflow-reviewer', schema: REVIEW_SCHEMA, phase: 'Review' }, { blockers: [], warnings: [] })
+  if (!rev.blockers.length) { log(`Review passed (cycle ${rCycle})${rev.warnings.length ? `, ${rev.warnings.length} warning(s)` : ''}`); break }
+  rCycle++
+  if (rCycle > 2) return { status: 'failed', stage: 'review', cycles: rCycle - 1, blockers: rev.blockers, warnings: rev.warnings, filePath: FILE }
+  log(`Review found ${rev.blockers.length} blocker(s) (cycle ${rCycle}) -> fixing`)
+  // ponytail: no re-validate after a design-fix; the Deploy push --verify is the schema backstop.
+  await safe(`Fix these DESIGN-QUALITY blockers in ${FILE} (preserve the intended change):\n${rev.blockers.map((e) => '- ' + e).join('\n')}`, { agentType: 'n8n-autopilot:n8n-author', schema: AUTHOR_SCHEMA, model: 'opus', phase: 'Review' }, {})
 }
 
 // ===== PHASE 5 — DEPLOY GATE (drift-safe) =====
 phase('Deploy')
-const pushRes = await agent(`Deploy + verify the file: ${FILE} (drift-check first; do NOT bypass the push-gate).`, { agentType: 'n8n-autopilot:n8n-deployer', schema: PUSH_SCHEMA, phase: 'Deploy' })
+const pushRes = await safe(`Deploy + verify the file: ${FILE} (drift-check first; do NOT bypass the push-gate).`, { agentType: 'n8n-autopilot:n8n-deployer', schema: PUSH_SCHEMA, phase: 'Deploy' }, { pushed: false, verified: false, workflowId: null, driftStatus: null, error: 'deployer produced no output' })
 if (!pushRes.pushed || !pushRes.verified) {
   // Drift here means remote changed DURING this run (we refreshed at comprehend). Surface, do not clobber.
   return { status: 'failed', stage: 'deploy', driftStatus: pushRes.driftStatus, error: pushRes.error || 'push/verify failed', filePath: FILE, hint: pushRes.driftStatus ? 'Remote changed during the edit run. Re-run the edit flow to pick up the new base.' : undefined }
@@ -120,4 +149,4 @@ if (HTTP.includes(tp.triggerType) && tp.testable) {
   log(`Non-HTTP trigger (${tp.triggerType}) — handing back for manual test`)
 }
 
-return { status: 'success', mode: 'edit', workflowId: WID, filePath: FILE, url: tp.presentUrl, triggerType: tp.triggerType, hasMcpTrigger: ctx.hasMcpTrigger, localMirrorHeld: ctx.localPresent, refreshed: ctx.refreshed, validateCycles: vCycle, test }
+return { status: 'success', mode: 'edit', workflowId: WID, filePath: FILE, url: tp.presentUrl, triggerType: tp.triggerType, hasMcpTrigger: ctx.hasMcpTrigger, localMirrorHeld: ctx.localPresent, refreshed: ctx.refreshed, validateCycles: vCycle, reviewWarnings: rev ? rev.warnings : [], test }

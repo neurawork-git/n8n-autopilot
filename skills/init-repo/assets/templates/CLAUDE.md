@@ -76,7 +76,7 @@ repo basename; never customer data.
 - **Archived workflows are read-only** — `push` is rejected. No code-fix-loop; unarchive in n8n UI or create new.
 - Get workflow details: `npx n8nac pull <workflowId>`
 - Deploy template: `npx n8nac skills examples search/list/info/download <id>` → `npx n8nac push`
-- Execution history: `npx n8nac execution list --workflow <id>`
+- Execution history: `npx n8nac execution list --workflow-id <id>`
 - Execution details: `npx n8nac execution get <execId> --include-data`
 - Community node search: n8nac MCP `search_n8n_knowledge` (see also: `pull-schemas` skill, Stage 3 fallback)
 - Workflow fix after error: read error → fix `.workflow.ts` → `n8nac skills validate` → `n8nac push --verify` → `n8nac test`

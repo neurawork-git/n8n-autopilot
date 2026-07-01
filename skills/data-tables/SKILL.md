@@ -10,7 +10,10 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash(curl:*), Bash(npx:*), Bash(jq
 
 n8nac has no commands for DataTable lifecycle (`n8nac datatable` does not exist as of 2.2.x). The only way to create/seed/drop tables outside the n8n UI is the public REST API. This skill encapsulates the exact endpoints + the curl patterns the PreToolUse hook is configured to allow.
 
-> **Carve-out scope:** Only URLs containing `/api/v1/data-tables` are allowed past the curl-block. Anything else (workflows, credentials, executions) still routes through `n8nac` — do not try to reach those via curl from here.
+> **Carve-out scope:** Only URLs containing `/api/v1/data-tables` are allowed past the REST-block.
+> The guard catches `curl`/`wget`/`urllib`/`Invoke-RestMethod`/`requests.` against `/api/v1` — you
+> cannot dodge it by switching HTTP tool. Anything else (workflows, credentials, executions) still
+> routes through `n8nac` — do not try to reach those via raw HTTP from here.
 
 ## Prerequisites
 
@@ -26,6 +29,12 @@ set -a; source .env; set +a
 BASE="${N8N_API_URL%/}/api/v1/data-tables"
 AUTH=(-H "X-N8N-API-KEY: $N8N_API_KEY" -H "Accept: application/json")
 ```
+
+> **Polling / loops:** to read rows repeatedly, loop the carve-out `curl` — a `curl` against
+> `/api/v1/data-tables` inside a `while`/`for` still passes the guard. Do **NOT** switch to
+> `python`/`urllib`/`Invoke-RestMethod` to poll (the guard now blocks those too), and do **NOT**
+> read n8nac's internal `~/.n8n-manager/secrets.json` for the key — it is undocumented and may
+> change. The key is `N8N_API_KEY` (n8n UI → Settings → API, or your secret store / Infisical).
 
 ## API Reference (n8n public API v1)
 

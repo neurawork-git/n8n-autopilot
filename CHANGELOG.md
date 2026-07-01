@@ -2,6 +2,49 @@
 
 All notable changes to **n8n-autopilot** are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.0] — 2026-06-29
+
+Hardening pass from a multi-session friction analysis of real production runs: documented gotchas
+that were never enforced, and a noisy feedback metric.
+
+### Added
+- **build-workflow-v2 design-quality gate.** `workflow-reviewer` now runs as a hard gate between
+  Validate and Deploy (≤2 fix cycles) in both greenfield + edit flows. Design anti-patterns the n8n
+  validator cannot catch — raw HTTP in Code nodes, `continueOnFail`/`onError` masking real errors, AI
+  sub-nodes miswired via `.out().to()` — now block the push instead of shipping. Warnings are
+  surfaced (`reviewWarnings`) without blocking.
+- **Orchestrator StructuredOutput resilience.** Schema'd subagent calls in build-workflow-v2 +
+  build-stack-v2 now route through a `safe()` wrapper: a subagent that ends without calling
+  StructuredOutput (or dies terminally) gets one retry, then a graceful fallback into the existing
+  gate-failure path — instead of crashing the whole run with an opaque error after burning the
+  tokens (observed: a heavy agent burned ~786k tokens, then the workflow aborted opaquely).
+- **build-stack-v2 greenfield auto-detect.** Before decomposing, a greenfield stack build checks
+  `docs/*.architecture.md` for a stack that already covers the use-case and returns
+  `needs-decision` (re-run as extend, or pass `mode: 'greenfield'` to force) instead of silently
+  rebuilding a working stack from scratch.
+- **Feedback sync → public repo.** Target moved from the private `n8n-autopilot-internal` to the
+  public `neurawork-git/n8n-autopilot`. `repoLabel` (a customer basename = PII on a public repo) is
+  stripped from the issue title, summary, and raw NDJSON before push; records keep it locally.
+- **SessionStart plugin-staleness probe** (`check-plugin-version.sh`) — INFO nudge to
+  `claude plugin update` when the installed version is behind the latest GitHub release. Never
+  auto-runs (env-changing). Catches the case where a stale install silently lacks newer gotcha hooks.
+- **Cheat-sheet rows**: credential-schema-first (`n8nac credential schema <type>` before create) and
+  sub-workflow-publish-before-parent.
+
+### Fixed
+- **Wrong execution-list flag** in the cheat-sheet/reference: `--workflow` → `--workflow-id` (n8nac
+  rejects `--workflow`; the documented form caused the same CLI error across sessions). 5 files.
+- **REST-guard dodge.** The PreToolUse curl-block only matched `curl`/`wget`, so `urllib` /
+  `Invoke-RestMethod` / `requests.` slipped past it. Guard now catches those against `/api/v1` too;
+  the `/api/v1/data-tables` carve-out is preserved, and the skill blesses looping its `curl` for
+  polling (instead of reading n8nac's internal secret store).
+- **env-blind `workspace status` trap.** CLAUDE.md recommended `workspace status` to verify the env,
+  but it reports the GLOBAL active env — this misled the model into the forbidden `env use` across 3
+  sessions. Docs now route env verification to `env list --json`.
+- **Noisy feedback metric.** `capture-feedback.sh` matched skill-listing + SessionStart-hook
+  injections (false positives) and double-counted on resume. Now scans only real conversation turns
+  and keeps one last-write-wins event per session.
+
 ## [5.0.0] — 2026-06-08
 
 ### ⚠ BREAKING — minimum n8nac raised 2.2.0 → 2.3.0
