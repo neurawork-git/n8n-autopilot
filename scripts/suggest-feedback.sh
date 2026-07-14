@@ -41,7 +41,15 @@ fi
 mkdir -p "$STORE" 2>/dev/null || exit 0
 : > "$MARKER"
 
-cat >&2 <<EOF
-FEEDBACK GATE: This session contains real n8n-autopilot work ($N8NAC_CALLS n8nac calls) and no feedback finding has been recorded yet. Before ending your turn, ACTIVELY propose the feedback loop to the user NOW: summarize in 1-2 sentences which frictions/learnings this session surfaced and ask whether to run /n8n-autopilot:feedback review (distills them into typed findings, one GitHub issue each; push stays consent-gated). If the user declines, respect it — this gate fires only once per session.
-EOF
-exit 2
+# Block the stop via the JSON decision API (exit 0) — an exit-2/stderr block renders as a red
+# "Stop hook error" line in the client, which reads like a crash. Same effect, clean UI.
+node -e '
+const reason = "FEEDBACK GATE: This session contains real n8n-autopilot work (" + process.argv[1] +
+  " n8nac calls) and no feedback finding has been recorded yet. Before ending your turn, ACTIVELY " +
+  "propose the feedback loop to the user NOW: summarize in 1-2 sentences which frictions/learnings " +
+  "this session surfaced and ask whether to run /n8n-autopilot:feedback review (distills them into " +
+  "typed findings, one GitHub issue each; push stays consent-gated). If the user declines, respect " +
+  "it — this gate fires only once per session.";
+console.log(JSON.stringify({ decision: "block", reason }));
+' "$N8NAC_CALLS" 2>/dev/null || exit 0
+exit 0

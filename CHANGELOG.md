@@ -2,6 +2,14 @@
 
 All notable changes to **n8n-autopilot** are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [5.2.1] — 2026-07-14
+
+### Fixed
+- **Stop-hook feedback gate rendered as a red "Stop hook error".** The gate signalled its block via
+  exit 2 + stderr, which the client displays as an error line. It now uses the JSON decision API
+  (`{"decision":"block","reason":…}`, exit 0) — same behavior (the agent must propose
+  `/n8n-autopilot:feedback review`), clean rendering.
+
 ## [5.2.0] — 2026-07-14
 
 Feedback loop rebuilt end-to-end around actionable, typed findings, plus the n8nac 2.4 refresh.
@@ -38,6 +46,8 @@ Feedback loop rebuilt end-to-end around actionable, typed findings, plus the n8n
 - Reference skill regenerated for **n8nac 2.4.0** (adds the `native-mcp` command group);
   `dump-n8nac-help.sh` allowlist extended accordingly; stale "MCP entry-point broken upstream" note
   in build-workflow corrected.
+
+## [5.1.0] — 2026-06-29
 
 Hardening pass from a multi-session friction analysis of real production runs: documented gotchas
 that were never enforced, and a noisy feedback metric.
