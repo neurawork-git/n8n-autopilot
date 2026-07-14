@@ -1,6 +1,6 @@
 # n8nac CLI Reference — Generated
 
-Generated automatically from `n8nac --help` recursion. n8nac version: **2.3.6**.
+Generated automatically from `n8nac --help` recursion. n8nac version: **2.4.0**.
 
 This file is the source of truth for what subcommands and flags exist. If a command appears here, it exists. If it does not appear here, **it does not exist** — do not invent it.
 
@@ -80,6 +80,8 @@ Commands:
                                        TypeScript formats
   convert-batch [options] <directory>  Batch convert all workflows in a
                                        directory
+  native-mcp                           Inspect optional native n8n MCP assist
+                                       configuration and capabilities
   mcp [options]                        Start the dedicated n8n-as-code MCP
                                        server
   workflow                             Workflow lifecycle management (present,
@@ -772,6 +774,134 @@ Options:
 
 ---
 
+## `n8nac native-mcp`
+
+### `n8nac native-mcp`
+
+```
+Usage: n8nac native-mcp [options] [command]
+
+Inspect optional native n8n MCP assist configuration and capabilities
+
+Options:
+  -h, --help                        display help for command
+
+Commands:
+  configure [options] [name-or-id]  Configure optional native n8n MCP assist
+                                    for a workspace environment without
+                                    committing secrets
+  disable [options] [name-or-id]    Disable native n8n MCP assist for a
+                                    workspace environment and remove its stored
+                                    token
+  status [options] [name-or-id]     Show native n8n MCP assist configuration
+                                    status without mutating n8n
+  tools [options] [name-or-id]      List tools exposed by the configured native
+                                    n8n MCP server
+  doctor [options] [name-or-id]     Check whether native n8n MCP assist is
+                                    enabled, configured, reachable, and
+                                    tool-discoverable
+  help [command]                    display help for command
+```
+
+### `n8nac native-mcp configure`
+
+```
+Usage: n8nac native-mcp configure [options] [name-or-id]
+
+Configure optional native n8n MCP assist for a workspace environment without
+committing secrets
+
+Arguments:
+  name-or-id              Environment name or ID; defaults to pinned
+                          environment or --env
+
+Options:
+  --url <url>             Native n8n MCP HTTP endpoint; defaults to
+                          <environment-url>/mcp-server/http
+  --token <token>         Native n8n MCP bearer token to store locally
+  --token-stdin           Read the native n8n MCP bearer token from stdin
+  --timeout-ms <ms>       Native MCP request timeout in milliseconds
+  --allow-execution-data  Allow full live execution payloads when explicitly
+                          requested
+  --deny-execution-data   Disallow full live execution payloads
+  --allow-remote          Allow exposing native wrappers through non-loopback
+                          HTTP/SSE broker transports
+  --deny-remote           Disallow exposing native wrappers through
+                          non-loopback HTTP/SSE broker transports
+  --json                  Output environment as JSON
+  -h, --help              display help for command
+```
+
+### `n8nac native-mcp disable`
+
+```
+Usage: n8nac native-mcp disable [options] [name-or-id]
+
+Disable native n8n MCP assist for a workspace environment and remove its stored
+token
+
+Arguments:
+  name-or-id  Environment name or ID; defaults to pinned environment or --env
+
+Options:
+  --json      Output environment as JSON
+  -h, --help  display help for command
+```
+
+### `n8nac native-mcp doctor`
+
+```
+Usage: n8nac native-mcp doctor [options] [name-or-id]
+
+Check whether native n8n MCP assist is enabled, configured, reachable, and
+tool-discoverable
+
+Arguments:
+  name-or-id    Environment name or ID; defaults to pinned environment or --env
+
+Options:
+  --cwd <path>  Project directory used to resolve n8n-as-code context
+  --json        Output status as JSON
+  -h, --help    display help for command
+```
+
+### `n8nac native-mcp status`
+
+```
+Usage: n8nac native-mcp status [options] [name-or-id]
+
+Show native n8n MCP assist configuration status without mutating n8n
+
+Arguments:
+  name-or-id       Environment name or ID; defaults to pinned environment or
+                   --env
+
+Options:
+  --cwd <path>     Project directory used to resolve n8n-as-code context
+  --include-tools  Connect to the native n8n MCP server and include discovered
+                   tools
+  --json           Output status as JSON
+  -h, --help       display help for command
+```
+
+### `n8nac native-mcp tools`
+
+```
+Usage: n8nac native-mcp tools [options] [name-or-id]
+
+List tools exposed by the configured native n8n MCP server
+
+Arguments:
+  name-or-id    Environment name or ID; defaults to pinned environment or --env
+
+Options:
+  --cwd <path>  Project directory used to resolve n8n-as-code context
+  --json        Output status and tool list as JSON
+  -h, --help    display help for command
+```
+
+---
+
 ## `n8nac mcp`
 
 ### `n8nac mcp`
@@ -1296,4 +1426,4 @@ Options:
 
 ---
 
-_End of generated reference. 2.3.6_
+_End of generated reference. 2.4.0_

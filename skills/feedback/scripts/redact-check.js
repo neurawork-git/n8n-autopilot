@@ -15,8 +15,15 @@ const fs = require("fs");
 
 const ALLOWED_KEYS = new Set([
   "kind", "schemaVersion", "sessionId", "ts", "endReason", "n8nacVersion",
-  "repoLabel", "signals", "answers", "freeText", "insights", "synced"
+  "repoLabel", "signals", "answers", "freeText", "insights", "synced",
+  // typed finding records (one finding = one issue):
+  "type", "severity", "area", "title", "observed", "expected", "suggestion"
 ]);
+const FINDING_TYPES = new Set([
+  "schema-gap", "cli-friction", "validation-loop", "mcp-detour",
+  "credential-gap", "doc-gap", "design-antipattern", "bug", "other"
+]);
+const SEVERITIES = new Set(["low", "medium", "high"]);
 const ALLOWED_SIGNALS = new Set([
   "push_gate_block", "validate_fail", "credential_missing", "action_required",
   "mcptrigger_detour", "non_http_test", "conflict_resolve", "curl_block",
@@ -53,6 +60,8 @@ function freeTextFields(rec) {
     for (const [k, v] of Object.entries(rec.answers)) if (typeof v === "string") out.push(["answers." + k, v]);
   if (rec.insights && typeof rec.insights === "object")
     for (const [k, v] of Object.entries(rec.insights)) if (typeof v === "string") out.push(["insights." + k, v]);
+  for (const f of ["area", "title", "observed", "expected", "suggestion"])
+    if (typeof rec[f] === "string") out.push([f, rec[f]]);
   return out;
 }
 
@@ -85,6 +94,13 @@ for (const line of raw.split("\n")) {
 
   if (rec.repoLabel != null && !/^[A-Za-z0-9._-]+$/.test(String(rec.repoLabel)))
     violations.push(`record ${n}: repoLabel '${rec.repoLabel}' is not a bare basename (path leak risk)`);
+
+  if (rec.kind === "finding") {
+    if (!FINDING_TYPES.has(rec.type)) violations.push(`record ${n}: finding type '${rec.type}' not in taxonomy`);
+    if (rec.severity != null && !SEVERITIES.has(rec.severity)) violations.push(`record ${n}: invalid severity '${rec.severity}'`);
+    for (const req of ["title", "observed"])
+      if (typeof rec[req] !== "string" || !rec[req]) violations.push(`record ${n}: finding missing required '${req}'`);
+  }
 
   for (const [field, val] of freeTextFields(rec)) {
     const hit = scanText(val);

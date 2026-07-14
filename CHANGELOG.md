@@ -2,7 +2,42 @@
 
 All notable changes to **n8n-autopilot** are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [5.1.0] — 2026-06-29
+## [5.2.0] — 2026-07-14
+
+Feedback loop rebuilt end-to-end around actionable, typed findings, plus the n8nac 2.4 refresh.
+
+### Added
+- **Typed `finding` records — one finding = one GitHub issue.** A finding carries `type`
+  (schema-gap | cli-friction | validation-loop | mcp-detour | credential-gap | doc-gap |
+  design-antipattern | bug | other), `severity`, `area` (node type / n8nac command), `title`,
+  `observed`, `expected`, `suggestion`, and `signals` evidence counts. Raw auto-captured signal
+  counts are local telemetry only — `sync.sh` refuses to push until the review flow distills them
+  into findings. Issues include the reporter (OS username) and the raw finding JSON.
+- **Webhook ingest transport — no `gh` needed on the consumer side.** Push is ONE `curl` POST to the
+  plugin's ingest webhook (override via `N8N_AUTOPILOT_FEEDBACK_URL`); the maintainer-side n8n
+  ingest workflow owns the GitHub token and creates one labelled issue per finding.
+- **`feedback-triage` agent (maintainer-side).** Dedups open `feedback` issues (closes duplicates
+  with cross-reference), adds triage comments, reports a ranked backlog. Re-runnable.
+- **`Stop` hook (`scripts/suggest-feedback.sh`).** After a work turn in a session with real n8nac
+  activity and no recorded finding, it blocks the stop once and makes the agent actively propose
+  `/n8n-autopilot:feedback review`. Fires once per session, never loops, silent otherwise.
+- **`native-mcp` coverage (n8nac 2.4).** Cheat-sheet section, `docs/MCP.md` guide with a test-path
+  evaluation (read-only assist today; binary payloads never via MCP), and full command reference.
+- **Activation-failure hard rule.** A failing `n8nac workflow activate` means the WORKFLOW IS BROKEN
+  (node issues — most often a service node without a `credentials:` block). The `n8n-tester` agent
+  now diagnoses and classifies this as a fixable Class B error; asking the user to activate in the
+  n8n UI is forbidden (CLAUDE.md NEVER list + build-workflow Path C).
+- `.gitattributes` pinning LF for scripts — CRLF checkouts on Windows broke `Workflow({scriptPath})`
+  ("script contains control characters").
+
+### Changed
+- `sync.sh` dedups event records per `sessionId` (cumulative counters — last wins), fills
+  `pluginVersion`, and reports the created issue URLs.
+- `redact-check.js` allowlists the finding fields, enforces the type/severity taxonomy, and scans
+  the new free-text fields; node types and n8nac command names are explicitly safe context.
+- Reference skill regenerated for **n8nac 2.4.0** (adds the `native-mcp` command group);
+  `dump-n8nac-help.sh` allowlist extended accordingly; stale "MCP entry-point broken upstream" note
+  in build-workflow corrected.
 
 Hardening pass from a multi-session friction analysis of real production runs: documented gotchas
 that were never enforced, and a noisy feedback metric.

@@ -120,10 +120,18 @@ Three lifecycle steps n8nac **cannot** automate (full procedures in
 - **DataTable CRUD** — no `datatable` subcommand; use the `/n8n-autopilot:data-tables` skill (curl carve-out for `/api/v1/data-tables` only).
 
 **Feedback loop** — SessionEnd auto-captures non-PII friction signals locally; `/n8n-autopilot:feedback`
-reviews + consent-gated pushes ONE GitHub issue. Detail: [docs/rules/feedback-loop.md](docs/rules/feedback-loop.md).
+review distills them into typed `finding` records and consent-gated POSTs them to the ingest webhook
+(no gh needed) → **one public GitHub issue per finding** (incl. reporter = OS username);
+maintainer-side `feedback-triage` agent dedups/ranks the open issues.
+Detail: [docs/rules/feedback-loop.md](docs/rules/feedback-loop.md).
 
 ### NEVER do these (enforced by hooks)
 - Never call the n8n REST API directly (curl, wget, urllib, Invoke-RestMethod, fetch, HTTP Request node) — the PreToolUse guard blocks all of these against `/api/v1`. **Exception:** `/api/v1/data-tables` via the `data-tables` skill (loop its `curl` for polling; never read n8nac's internal `~/.n8n-manager/secrets.json` for the key).
 - Never delete workflows without explicit user confirmation.
 - Never write workflow JSON by hand — always Decorator-TS format.
+- **Never ask the user to activate/publish a workflow in the n8n UI.** A failing
+  `npx n8nac workflow activate <id>` means the WORKFLOW IS BROKEN (node issues — most often an
+  external-service node without a `credentials:` block). Diagnose + fix + re-push + re-activate;
+  cross-check the instance with a known-good trivial workflow if unsure. UI-activation requests are
+  a bug, not a workaround. (Only exception: `mcpTrigger` publish — a documented n8n API gap.)
 - **Archived workflows are read-only** — `push` is rejected; unarchive (n8n UI) or recreate, no code-fix loop.

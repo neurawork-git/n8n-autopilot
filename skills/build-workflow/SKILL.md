@@ -19,7 +19,11 @@ Take a natural-language description and ship it as a **verified live execution o
 
 ## Tools — all CLI
 
-n8n-autopilot is CLI-only (`npx n8nac …`). There is no `mcp__n8n-as-code__*` namespace in any working setup — the npm `n8nac mcp` entry-point is broken upstream and Etienne's plugin ships skill knowledge, not an MCP server. Use the table below.
+n8n-autopilot drives everything through the CLI (`npx n8nac …`) — use the table below. Since n8nac
+2.4 a working MCP server exists (`n8nac mcp`, plus the read-only `native-mcp` assist against the
+instance's own MCP endpoint — see [docs/MCP.md](../../docs/MCP.md)); it complements research and
+execution inspection but does NOT replace the CLI pipeline here: authoring stays `.workflow.ts` +
+`push`, and live tests stay `n8nac test` (binary/file payloads NEVER go through MCP).
 
 | Command | Role |
 |---------|------|
@@ -234,6 +238,13 @@ After successful test, if the user wants the workflow active (cron starts runnin
 ```bash
 npx n8nac workflow activate <workflowId>
 ```
+
+> **Activation failure = broken workflow (hard rule).** If `activate` does not report `active=true`,
+> the workflow has node issues — n8n refuses activation exactly then. NEVER ask the user to activate
+> in the UI. Diagnose (most common: an external-service node without a `credentials:` block in
+> `@node({...})`; then missing required params / broken expression), fix, re-validate, re-push
+> (`--verify`), re-activate. Cross-check with a known-good trivial workflow to rule out the instance.
+> This is a Class B error → normal fix loop (max 3 cycles).
 
 Note: `activate` is NOT the same as `publish` for the new Two-Phase model — see Path D for `mcpTrigger` workflows.
 

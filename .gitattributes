@@ -1,0 +1,7 @@
+# Workflow-tool scripts and bash scripts must stay LF — a CRLF checkout on Windows
+# breaks Workflow({scriptPath}) ("script contains control characters") and is fragile in bash.
+*.sh text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.ts text eol=lf

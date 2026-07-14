@@ -1,9 +1,9 @@
 ---
 name: feedback
-description: Review the current n8n-autopilot session for learnings (operational friction + workflow design anti-patterns), strip all PII, and push the redacted insights centrally to the public plugin repo as a GitHub issue. Side-effecting on `sync`/`review`-push — shows the redacted result and requires explicit confirmation.
+description: Review the current n8n-autopilot session for learnings (operational friction + workflow design anti-patterns), strip all PII, and push the redacted insights centrally via the plugin's ingest webhook (they land as batch comments on the public rollup issue). Side-effecting on `sync`/`review`-push — shows the redacted result and requires explicit confirmation.
 argument-hint: "[review | interview | show | sync]"
 user-invocable: true
-allowed-tools: Read, Grep, Glob, Bash(bash:*), Bash(node:*), Bash(gh:*)
+allowed-tools: Read, Grep, Glob, Bash(bash:*), Bash(node:*), Bash(curl:*)
 ---
 
 # Autopilot Feedback — Review, Redact, Push
@@ -59,15 +59,30 @@ Use Grep/Read over `workflows/**/*.workflow.ts`:
 Skim the transcript for process pain the counts miss (repeated dead-ends, manual detours, unclear
 errors). Keep it to a few concrete, **generalizable** observations — NOT a play-by-play.
 
-### 5. Compose the REDACTED insight record
+### 5. Compose REDACTED, TYPED finding records — one per concrete problem
 
-Write neutral, reusable learnings. **No customer names, no file paths, no workflow content, no
-values, no URLs.** Phrase findings as patterns ("Code node iterating a large DB result set → OOM
-risk; recommend SplitInBatches"), not incidents ("<customer> workflow X crashed").
+**A finding is the actionable unit: one finding = one GitHub issue.** Do NOT write one blob record —
+write one finding per distinct problem, each answering: what went wrong, where, what was expected,
+what would fix it. Neutral phrasing, **no customer names, no file paths, no workflow content, no
+values, no URLs.** Node types (`n8n-nodes-base.github`) and n8nac commands (`n8nac push`) are safe
+and REQUIRED context — put them in `area`.
 
 ```bash
-node "$CLAUDE_PLUGIN_ROOT/skills/feedback/scripts/record.js" '{"kind":"insight","signals":{"code_nodes":N,"native_conditional":N,"missing_descriptions":N,"overlapping_nodes":N},"insights":{"top_friction":"...","design":"...","suggestion":"..."}}'
+node "$CLAUDE_PLUGIN_ROOT/skills/feedback/scripts/record.js" '{
+  "kind": "finding",
+  "type": "schema-gap|cli-friction|validation-loop|mcp-detour|credential-gap|doc-gap|design-antipattern|bug|other",
+  "severity": "low|medium|high",
+  "area": "<node type or n8nac command>",
+  "title": "<one line — becomes the issue title>",
+  "observed": "<what actually happened, incl. exact error phrase if non-PII>",
+  "expected": "<what should have happened>",
+  "suggestion": "<concrete fix idea>",
+  "signals": { "<signal-class>": N }
+}'
 ```
+
+`type`, `title`, `observed` are required (record.js enforces). Attach the session's relevant signal
+counts as `signals` evidence. Repeat per problem — 3 problems = 3 findings = 3 issues.
 
 ### 6. Run the deterministic PII gate (show the user)
 
@@ -81,8 +96,10 @@ node "$CLAUDE_PLUGIN_ROOT/skills/feedback/scripts/redact-check.js" .n8n-autopilo
 
 ### 7. Show every pending record + confirm
 
-Display all pending records verbatim (run `show`). State the target
-(`neurawork-git/n8n-autopilot`, a public GitHub issue — `repoLabel`/customer name stripped). Require an explicit **"ja / bestätigt"**.
+Display all pending records verbatim (run `show`). State the target: the plugin's ingest webhook
+creates **one PUBLIC GitHub issue per finding** on `neurawork-git/n8n-autopilot` (`repoLabel`/customer
+name stripped; `reporter` = OS username IS included by design). Require an explicit
+**"ja / bestätigt"**.
 
 ### 8. Push
 
@@ -90,20 +107,28 @@ Display all pending records verbatim (run `show`). State the target
 bash "$CLAUDE_PLUGIN_ROOT/skills/feedback/scripts/sync.sh"
 ```
 
-`sync.sh` re-runs `redact-check.js` as a hard gate before creating the issue (defense-in-depth), then
-moves pushed records to `synced.ndjson`. Report the issue URL. If it exits non-zero, surface the
-error verbatim and stop — nothing was pushed.
+`sync.sh` pushes **finding records only** (raw event counts are local telemetry — the review flow
+distills them into findings first; sync refuses with a hint if only counts are pending). It re-runs
+`redact-check.js` as a hard gate on the exact payload (defense-in-depth), adds `pluginVersion` +
+`reporter` (OS username), then POSTs ONE batch to the ingest webhook (`N8N_AUTOPILOT_FEEDBACK_URL`
+overrides the default). The ingest workflow creates one issue per finding. On HTTP 200 sync moves all
+pending records to `synced.ndjson` and lists the created issue URLs. If it exits non-zero, surface
+the error verbatim and stop — nothing was pushed, nothing was marked.
 
 ---
 
 ## Interview (manual Q&A only)
 
-Ask the user (accept "skip" per item), then write a `process` record:
+Ask the user (accept "skip" per item):
 1. Non-HTTP-Trigger-Test umständlich? 2. Konflikt-Auflösung häufig? 3. Validate→Fix-Schleifen / Fehler klar?
 4. MCP-Publish genervt? 5. Node-Schemas gefehlt? 6. Rating 1–5. 7. Freitext (optional).
 
+Store the raw Q&A as a `process` record, then **distill each concrete pain point into a typed
+`finding` record** (step 5 schema) — only findings become issues:
+
 ```bash
 node "$CLAUDE_PLUGIN_ROOT/skills/feedback/scripts/record.js" '{"answers":{...},"freeText":"..."}'
+node "$CLAUDE_PLUGIN_ROOT/skills/feedback/scripts/record.js" '{"kind":"finding","type":"...","title":"...","observed":"...", ...}'
 ```
 
 Then run the PII gate (step 6) before any sync.
@@ -128,5 +153,7 @@ try{const r=JSON.parse(t);if(r.synced!==true)console.log(r.kind,r.ts,r.repoLabel
 
 Runs the PII gate then pushes (see step 8). Always shows records + requires confirmation first.
 
-> The `sync.sh` script is the ONLY place `gh` runs. No hook ever pushes — capture is local-only;
-> the push is always this user-triggered, PII-gated, confirmed flow.
+> The `sync.sh` script is the ONLY place a push happens (one `curl` POST to the ingest webhook — no
+> `gh`/GitHub account needed on the consumer side). No hook ever pushes — capture is local-only;
+> the push is always this user-triggered, PII-gated, confirmed flow. Maintainer-side refinement of
+> the rollup issue = the `feedback-triage` agent (that one DOES need `gh`).

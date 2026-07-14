@@ -194,6 +194,39 @@ npx n8nac skills examples download <templateId>
 
 ---
 
+## 1b. Native n8n MCP assist — `n8nac native-mcp` (ab n8nac 2.4)
+
+n8n 2.x bringt einen **instanzweiten MCP-Server** (`https://<host>/mcp-server/http`) mit Live-Zugriff
+auf Workflows, Executions, Credential-Metadaten, Projekte und native Node-Definitionen. n8nac 2.4
+bindet ihn als **Broker** an: der `n8nac mcp`-Server bleibt das Interface zum AI-Client und ruft den
+nativen Server nur über freigegebene Wrapper-Tools auf. Aktueller Wrapper-Satz: **read-only**
+(Policy-Default: `allowMutations/Publish/Destructive/ExecutionData = false`).
+
+```bash
+npx n8nac native-mcp configure <env> --token-stdin   # Token aus n8n UI (Settings → MCP); URL wird
+                                                     # aus der Env-Base-URL abgeleitet (/mcp-server/http)
+npx n8nac native-mcp doctor <env> --json             # Verbindung + Konfiguration prüfen
+npx n8nac native-mcp tools <env> --json              # welche nativen Tools die Instanz exposed
+npx n8nac native-mcp status <env> --include-tools --json
+npx n8nac native-mcp disable <env>
+```
+
+### Evaluation: MCP als Test-Pfad (Stand n8nac 2.4.0)
+
+| Test-Szenario | Heute nutzen | Begründung |
+|---|---|---|
+| webhook/chat/form-Trigger | `n8nac test` / `test --prod` (Default, unverändert) | Exerziert den echten Trigger-Contract (HTTP-Pfad, Auth, Response-Node) — genau das, was produktiv passiert |
+| Binär-/Datei-Payloads | `n8nac test` (Webhook) — **nie MCP** | MCP-Tool-Calls sind JSON; Binär wird zum base64-Blob (Format-Mismatch) |
+| Execution-Inspektion nach Tests | `execution get --include-data`; native-mcp-Assist als Ergänzung, wenn konfiguriert | Live-Suche über Executions/Fehlerstatus via MCP ist bequemer für Agents als Cursor-Paging |
+| schedule/manual/errorTrigger | Heute: `/n8n-autopilot:test-manual`-Detour. **Zukunft: native-mcp** | Upstream-Doku nennt "explicit workflow execution by ID, non-webhook workflow testing, native pin-data preparation" als geplante Runtime-Execution-Strategie — sobald der Wrapper existiert, ersetzt das den UI-Detour |
+| Server-side Validation | native-mcp-Assist ergänzend zu `skills validate --strict` | Validierung gegen die echte n8n-Version fängt Versions-Drift, die das lokale Schema nicht kennt |
+
+**Regeln:** Workflows werden weiterhin NUR über `.workflow.ts` + `push` verändert (native MCP
+create/update/publish ist kein zulässiger Pfad — Drift). Token nie in Projektdateien; non-secret
+Config liegt env-scoped in `n8nac-config.json`, das Token im n8nac-Secret-Store.
+
+---
+
 ## 2. MCP Server Trigger — Custom Tools (komplementär)
 
 Expose n8n workflows as custom MCP tools via the MCP Server Trigger node (`@n8n/n8n-nodes-langchain.mcpTrigger`). The endpoint becomes reachable once the workflow is **published** in the n8n UI.

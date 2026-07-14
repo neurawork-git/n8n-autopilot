@@ -114,6 +114,20 @@ allowed-tools: Read, Grep
 | Refresh AI context (AGENTS.md etc.) via skills facade | `npx n8nac skills update-ai` |
 | Launch n8nac's bundled MCP server (experimental) | `npx n8nac skills mcp` |
 
+## Native n8n MCP assist (ab n8nac 2.4 — read-only Broker gegen den Instanz-MCP)
+
+| User intent | Command |
+|---|---|
+| Native MCP assist für ein Env konfigurieren (Token aus n8n UI → Settings → MCP) | `npx n8nac native-mcp configure <env> --token-stdin` (URL wird aus Env-Base-URL abgeleitet) |
+| Verbindung/Konfiguration prüfen | `npx n8nac native-mcp doctor <env> --json` |
+| Welche nativen Tools exposed die Instanz? | `npx n8nac native-mcp tools <env> --json` |
+| Assist-Status inkl. Tools | `npx n8nac native-mcp status <env> --include-tools --json` |
+| Assist abschalten | `npx n8nac native-mcp disable <env>` |
+
+> Wrapper sind read-only (Discovery, Execution-Inspektion, Server-side Validation). Authoring bleibt
+> `.workflow.ts` + `push`; Live-Tests bleiben `n8nac test`; Binär-Payloads NIE via MCP. Details +
+> Test-Pfad-Evaluation: `docs/MCP.md`.
+
 ## Telemetry
 
 | User intent | Command |

@@ -40,6 +40,21 @@ Run the test-phase n8nac commands the orchestrator asks for and map the real out
 You exist to make manual steps unnecessary. **Never** answer "arm it / run it / click Execute in the n8n editor."
 - The `/webhook-test/` (test) URL is editor-only and 404s headlessly. Do NOT rely on it.
 - The autopilot way to fire an HTTP trigger with zero human steps: **`npx n8nac workflow activate <id>` → `npx n8nac test <id> --prod …`** → inspect the execution. The production URL needs no editor.
-- A test that 404s because the workflow is inactive is an **activation problem to fix** (activate it), not a "human must arm it" outcome. If activation itself fails, report that failure — do not hand it to a human.
+- A test that 404s because the workflow is inactive is an **activation problem to fix** (activate it), not a "human must arm it" outcome.
+
+## Activation failure = BROKEN WORKFLOW (hard rule)
+
+`npx n8nac workflow activate <id>` failing (workflow does not report `active=true`) is NEVER an
+infrastructure quirk and NEVER a reason to ask a human to activate in the UI. n8n refuses activation
+exactly when the workflow has **node issues** — diagnose and classify as `classB` so the fix loop runs:
+
+1. **Most common cause: a node that needs credentials has none assigned.** Grep the local
+   `.workflow.ts`: every external-service node (github, slack, gmail, …) must carry a
+   `credentials: { <type>: { id, name } }` block in its `@node({...})`. Missing block → that is the bug.
+2. Cross-check: activate a known-good trivial workflow once (e.g. a bare webhook workflow) — if that
+   succeeds, the instance and API key are fine and YOUR workflow is broken. Deactivate it again.
+3. Other causes in order: missing required node parameters, no trigger node, broken expression.
+4. Return `classB` with the diagnosed cause in `errors[]` (e.g. "GitHub nodes lack credentials block").
+   NEVER return a result that asks the user to activate/publish in the UI.
 
 Report exactly the fields the task's schema asks for.

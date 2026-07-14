@@ -1,112 +1,110 @@
 #!/usr/bin/env bash
-# sync.sh — push unsynced feedback records centrally as ONE labelled GitHub issue.
-# Transport = a single path (gh issue create); no fallback chain. On any failure: exit 1, mark nothing.
+# sync.sh — push unsynced feedback FINDINGS centrally via the plugin's ingest webhook.
+# Transport = a single path (curl POST to the n8n ingest webhook); no fallback chain.
+# On any failure: exit 1, mark nothing. No gh/GitHub account needed on the consumer side —
+# the ingest workflow (on the maintainer's n8n instance) owns the GitHub token and creates
+# ONE ISSUE PER FINDING on the public plugin repo.
 # Invoked by the /n8n-autopilot:feedback skill ONLY after the user confirms (PII consent gate).
 #
-# Records go to the PUBLIC plugin repo. Body carries the NDJSON records + a human summary.
-# repoLabel (a customer basename) is PII on a public repo -> stripped from title, summary, and
-# the raw NDJSON dump before any push. Pipeline: see feedback SKILL.md.
+# Only typed `finding` records are pushable — raw event counts are local telemetry that the
+# review flow distills INTO findings first. No findings pending -> exit 1 with a hint.
+# repoLabel (a customer basename) is PII on a public repo -> stripped from the payload.
+# reporter = OS username of the logged-in user (explicitly wanted in the issue).
 set -u
 
-REPO="neurawork-git/n8n-autopilot"
+WEBHOOK_URL="${N8N_AUTOPILOT_FEEDBACK_URL:-https://n8n.neurawork.app/webhook/autopilot-feedback}"
 WORKSPACE="${1:-$PWD}"
 STORE="$WORKSPACE/.n8n-autopilot/feedback"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [ ! -d "$STORE" ]; then
   echo "[feedback sync] no local feedback store ($STORE) — nothing to sync." >&2
   exit 0
 fi
 
-# Hard precheck — no fallback: gh must be installed and authenticated.
-if ! command -v gh >/dev/null 2>&1; then
-  echo "[feedback sync] ERROR: GitHub CLI 'gh' not installed. Install gh and 'gh auth login', then retry." >&2
-  exit 1
-fi
-if ! gh auth status >/dev/null 2>&1; then
-  echo "[feedback sync] ERROR: gh is not authenticated. Run 'gh auth login', then retry." >&2
+if ! command -v curl >/dev/null 2>&1; then
+  echo "[feedback sync] ERROR: curl not available." >&2
   exit 1
 fi
 
-BODY="$(mktemp)"
+# ── Build the payload: unsynced FINDING records only, repoLabel stripped, wrapped in an
+#    envelope with pluginVersion + reporter (OS username). COUNT = finding count.
+#    Raw event records are NOT pushable — the review flow distills them into findings.
+PAYLOAD="$(mktemp)"
 COUNT=$(node -e '
-const fs=require("fs"), path=require("path");
-const store=process.argv[1], bodyPath=process.argv[2];
-let recs=[];
+const fs=require("fs"), path=require("path"), os=require("os");
+const store=process.argv[1], out=process.argv[2], scriptDir=process.argv[3];
+let findings=[]; let nonFindings=0;
 for (const f of ["events.ndjson","process.ndjson"]) {
   const p=path.join(store,f); if(!fs.existsSync(p)) continue;
   for (const line of fs.readFileSync(p,"utf8").split("\n")) {
     const s=line.trim(); if(!s) continue;
-    try { const r=JSON.parse(s); if (r.synced!==true) recs.push(r); } catch(e){}
+    try {
+      const r=JSON.parse(s);
+      if (r.synced===true) continue;
+      if (r.kind==="finding") findings.push(r); else nonFindings++;
+    } catch(e){}
   }
 }
-if (!recs.length) { process.stdout.write("0"); process.exit(0); }
-// Human summary: aggregate signal counts only. Target repo is PUBLIC -> repoLabel
-// (customer basename) is stripped from the summary AND the raw dump.
-const agg={}; let processN=0;
-for (const r of recs) {
-  if (r.kind==="event" && r.signals) for (const [k,v] of Object.entries(r.signals)) agg[k]=(agg[k]||0)+v;
-  if (r.kind==="process") processN++;
-}
-const ranked=Object.entries(agg).sort((a,b)=>b[1]-a[1]);
-let md="## Autopilot feedback — "+recs.length+" record(s)\n\n";
-md+="- Process (interview) records: "+processN+"\n";
-md+="- Aggregated friction signals:\n";
-for (const [k,v] of ranked) md+="  - `"+k+"`: "+v+"\n";
-md+="\n<details><summary>Raw records (NDJSON)</summary>\n\n```ndjson\n";
-md+=recs.map(r=>{const {repoLabel,...rest}=r; return JSON.stringify(rest);}).join("\n")+"\n```\n</details>\n";
-fs.writeFileSync(bodyPath, md);
-process.stdout.write(String(recs.length));
-' "$STORE" "$BODY" 2>/dev/null || echo "ERR")
+if (!findings.length) { process.stdout.write(nonFindings ? "NOFINDINGS" : "0"); process.exit(0); }
+// Public target -> strip repoLabel (customer basename).
+const clean=findings.map(r=>{const {repoLabel,...rest}=r; return rest;});
+let pluginVersion="";
+try {
+  const pj=path.join(scriptDir,"..","..","..",".claude-plugin","plugin.json");
+  pluginVersion=JSON.parse(fs.readFileSync(pj,"utf8")).version||"";
+} catch(e){}
+let reporter="";
+try { reporter=os.userInfo().username||""; } catch(e){}
+fs.writeFileSync(out, JSON.stringify({kind:"autopilot-feedback",schemaVersion:2,pluginVersion,reporter,findings:clean}));
+process.stdout.write(String(clean.length));
+' "$STORE" "$PAYLOAD" "$SCRIPT_DIR" 2>/dev/null || echo "ERR")
 
 if [ "$COUNT" = "ERR" ]; then
   echo "[feedback sync] ERROR: failed to read local records." >&2
-  rm -f "$BODY"; exit 1
+  rm -f "$PAYLOAD"; exit 1
 fi
 if [ "$COUNT" = "0" ]; then
   echo "[feedback sync] no unsynced records — nothing to push."
-  rm -f "$BODY"; exit 0
+  rm -f "$PAYLOAD"; exit 0
+fi
+if [ "$COUNT" = "NOFINDINGS" ]; then
+  echo "[feedback sync] ERROR: pending records are raw signal counts, not findings." >&2
+  echo "[feedback sync] Run the /n8n-autopilot:feedback review flow first — it distills the counts into typed, actionable finding records (one issue each). Nothing was pushed." >&2
+  rm -f "$PAYLOAD"; exit 1
 fi
 
-# ── Defense-in-depth: deterministic PII allowlist gate before ANY push.
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# ── Defense-in-depth: deterministic PII allowlist gate on the EXACT payload records.
 RECORDS_TMP="$(mktemp)"
 node -e '
-const fs=require("fs"), path=require("path");
-const store=process.argv[1], out=process.argv[2];
-let recs=[];
-for (const f of ["events.ndjson","process.ndjson"]) {
-  const p=path.join(store,f); if(!fs.existsSync(p)) continue;
-  for (const line of fs.readFileSync(p,"utf8").split("\n")) {
-    const s=line.trim(); if(!s) continue;
-    try { const r=JSON.parse(s); if (r.synced!==true) recs.push(JSON.stringify(r)); } catch(e){}
-  }
-}
-fs.writeFileSync(out, recs.join("\n")+"\n");
-' "$STORE" "$RECORDS_TMP" 2>/dev/null
+const fs=require("fs");
+const payload=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+fs.writeFileSync(process.argv[2], payload.findings.map(r=>JSON.stringify(r)).join("\n")+"\n");
+' "$PAYLOAD" "$RECORDS_TMP" 2>/dev/null
 if ! node "$SCRIPT_DIR/redact-check.js" "$RECORDS_TMP"; then
   echo "[feedback sync] ERROR: redact-check blocked the push (PII / allowlist violation)." >&2
   echo "[feedback sync] Fix the flagged record(s) — re-run the /n8n-autopilot:feedback review so the LLM redaction neutralizes them — then retry sync. Nothing was pushed." >&2
-  rm -f "$RECORDS_TMP" "$BODY"; exit 1
+  rm -f "$RECORDS_TMP" "$PAYLOAD"; exit 1
 fi
 rm -f "$RECORDS_TMP"
 
-# Ensure the label exists (idempotent).
-gh label create feedback --repo "$REPO" --color B60205 --description "autopilot run feedback" >/dev/null 2>&1 || true
+# ── Push: one POST, one path. Success = HTTP 200 from the ingest webhook.
+RESPONSE="$(mktemp)"
+HTTP_CODE=$(curl -sS -o "$RESPONSE" -w "%{http_code}" \
+  -X POST -H "Content-Type: application/json" \
+  --data-binary "@$PAYLOAD" --max-time 30 "$WEBHOOK_URL" 2>&1) || HTTP_CODE="000"
+rm -f "$PAYLOAD"
 
-# PUBLIC repo: no repoLabel in the title (customer-name leak). Count only.
-TITLE="feedback: $COUNT records"
-
-URL=$(gh issue create --repo "$REPO" --label feedback --title "$TITLE" --body-file "$BODY" 2>&1)
-RC=$?
-rm -f "$BODY"
-
-if [ "$RC" -ne 0 ]; then
-  echo "[feedback sync] ERROR: gh issue create failed:" >&2
-  echo "$URL" >&2
-  exit 1
+if [ "$HTTP_CODE" != "200" ]; then
+  echo "[feedback sync] ERROR: ingest webhook returned HTTP $HTTP_CODE:" >&2
+  head -c 500 "$RESPONSE" >&2; echo "" >&2
+  rm -f "$RESPONSE"; exit 1
 fi
+ISSUE_URLS=$(node -e 'try{const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write((r.issues||[]).join("\n"));}catch(e){}' "$RESPONSE" 2>/dev/null)
+rm -f "$RESPONSE"
 
-# Success — mark pushed records synced: move them to synced.ndjson, keep only already-synced in place.
+# Success — mark ALL unsynced records synced (raw event counts were consumed by the review
+# that produced the pushed findings): move them to synced.ndjson.
 node -e '
 const fs=require("fs"), path=require("path");
 const store=process.argv[1];
@@ -125,5 +123,6 @@ for (const f of ["events.ndjson","process.ndjson"]) {
 }
 ' "$STORE" 2>/dev/null || true
 
-echo "[feedback sync] pushed $COUNT record(s) → $URL"
+echo "[feedback sync] pushed $COUNT finding(s), one issue each:"
+if [ -n "$ISSUE_URLS" ]; then echo "$ISSUE_URLS" | sed 's/^/  /'; fi
 exit 0

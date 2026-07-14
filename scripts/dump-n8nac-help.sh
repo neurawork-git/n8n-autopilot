@@ -52,7 +52,7 @@ emit_block() {
   echo ''
 }
 
-# Hard-coded parent allowlist (from n8nac 2.3.6 root --help).
+# Hard-coded parent allowlist (from n8nac 2.4.0 root --help).
 TOP_CMDS=(
   telemetry
   workspace
@@ -72,6 +72,7 @@ TOP_CMDS=(
   resolve
   convert
   convert-batch
+  native-mcp
   mcp
   workflow
   execution
@@ -112,7 +113,7 @@ for cmd in "${TOP_CMDS[@]}"; do
 
   # Only commands known to have subcommands
   case "$cmd" in
-    workspace|env|credentials|workflow|execution|credential|skills)
+    workspace|env|credentials|workflow|execution|credential|skills|native-mcp)
       SUBS=$(list_subs "$cmd")
       for sub in $SUBS; do
         emit_block "n8nac $cmd $sub"

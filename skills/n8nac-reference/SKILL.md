@@ -1,6 +1,6 @@
 ---
 name: n8nac-reference
-description: Authoritative reference for every `n8nac` CLI command, subcommand, and flag (n8nac 2.3.6). Use this BEFORE running `--help` interactively, BEFORE guessing flags, and BEFORE inventing a subcommand. If a command does not appear in this file, it does not exist — research stops, do not invent CLI surface. Covers workspace, env, setup, credentials, credential, workflow, execution, skills, list/find/pull/push/promote/verify/test/test-plan/fetch/resolve/convert, plus subcommand-level help.
+description: Authoritative reference for every `n8nac` CLI command, subcommand, and flag (n8nac 2.4.0). Use this BEFORE running `--help` interactively, BEFORE guessing flags, and BEFORE inventing a subcommand. If a command does not appear in this file, it does not exist — research stops, do not invent CLI surface. Covers workspace, env, setup, credentials, credential, workflow, execution, skills, list/find/pull/push/promote/verify/test/test-plan/fetch/resolve/convert/native-mcp, plus subcommand-level help.
 allowed-tools: Read, Grep, Glob, Bash(grep:*)
 ---
 
