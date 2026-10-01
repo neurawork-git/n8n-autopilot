@@ -75,10 +75,17 @@ const llmProvider = {        // node-type → provider tag
 const llmModelProvider = {}; // model → provider (best guess from concurrent nodes)
 const triggerCounts = {};    // trigger type → count
 const workflowNames = [];    // [{file, name}]
+// Estate-health counter. This drift is invisible per file and only shows up in aggregate, which is
+// exactly why it accumulates — each new workflow copies the pattern from its neighbours (#31).
+let filesWithoutDescription = 0;
 
 for (const f of files) {
   const src = fs.readFileSync(f, 'utf8');
   const rel = path.relative(workspaceRoot, f).replace(/\\/g, '/');
+
+  // Estate health: does this file document its intent anywhere? A `description:` in the workflow
+  // decorator or on a node both count — the question is whether ANY intent is written down, not where.
+  if (!/\bdescription\s*:\s*['"`]\s*\S/.test(src)) filesWithoutDescription++;
 
   // Workflow name
   const nameMatch = src.match(WORKFLOW_NAME_RE);
@@ -169,6 +176,33 @@ lines.push(`| Remote workflows (total) | ${remoteSummary ? remoteSummary.total :
 lines.push(`| Active (remote) | ${remoteSummary ? remoteSummary.active : 'N/A'} |`);
 lines.push(`| Archived (remote) | ${remoteSummary ? remoteSummary.archived : 'N/A'} |`);
 lines.push('');
+
+// ── Estate health — the two drifts that are invisible per file (#30, #31)
+{
+  const codeNodes = nodeCounts['n8n-nodes-base.code'] || 0;
+  const nativeBranch = ['if', 'switch', 'filter', 'set'].reduce((n, t) => n + (nodeCounts[`n8n-nodes-base.${t}`] || 0), 0);
+  const pct = (n) => files.length ? `${Math.round((n / files.length) * 100)}%` : 'n/a';
+  lines.push(`## Estate Health`);
+  lines.push('');
+  lines.push(`| Signal | Value | Healthy when |`);
+  lines.push(`|---|---|---|`);
+  lines.push(`| Code nodes | ${codeNodes} | below the native total — Code should be the exception |`);
+  lines.push(`| Native \`if\`/\`switch\`/\`filter\`/\`set\` | ${nativeBranch} | outnumbers Code nodes |`);
+  lines.push(`| Code : native ratio | ${nativeBranch ? (codeNodes / nativeBranch).toFixed(2) : 'n/a'} | < 1.0 |`);
+  lines.push(`| Workflows with no \`description\` anywhere | ${filesWithoutDescription} / ${files.length} (${pct(filesWithoutDescription)}) | 0 |`);
+  lines.push('');
+  if (codeNodes > nativeBranch) {
+    lines.push(`> ⚠️ **Code nodes outnumber all native branching combined.** Code that only branches or remaps`);
+    lines.push(`> fields is expressible declaratively via \`if\`/\`switch\`/\`filter\`/\`set\` — reviewable, and visible`);
+    lines.push(`> to validation. The ratio drifts silently because each new workflow copies its neighbours.`);
+    lines.push('');
+  }
+  if (filesWithoutDescription > 0) {
+    lines.push(`> ⚠️ **${filesWithoutDescription} workflow(s) document no intent at all.** Understanding them means`);
+    lines.push(`> reading the whole node graph — for a human and for automated comprehension alike.`);
+    lines.push('');
+  }
+}
 
 lines.push(`## Trigger Distribution`);
 lines.push('');

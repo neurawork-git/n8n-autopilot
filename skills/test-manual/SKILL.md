@@ -1,12 +1,17 @@
 ---
 name: test-manual
-description: Test a non-HTTP-trigger workflow (schedule, manual, errorTrigger) that n8nac cannot fire from the CLI. Resolves the n8n UI URL, waits for you to run it and report the execution-id, then inspects the run. Read-only against the instance.
+description: Hand-driven UI test of a workflow — only when the native n8n MCP test path (docs/rules/testing.md) is not registered. Resolves the UI URL, waits for you to run it and report the execution-id, then inspects the run. Resolves the n8n UI URL, waits for you to run it and report the execution-id, then inspects the run. Read-only against the instance.
 argument-hint: "<workflowId>"
 user-invocable: true
 allowed-tools: Read, Bash(npx:*)
 ---
 
 # Test a Non-HTTP-Trigger Workflow
+
+> **Since 5.4.0 this is not the default.** Every trigger type is tested headless through the native
+> n8n MCP (pinned `test_workflow`, or live `execute_workflow`) — see
+> [docs/rules/testing.md](../../docs/rules/testing.md). Use this skill only when the `n8n-native`
+> MCP server is not registered, or to watch a run in the UI.
 
 `npx n8nac test` can only fire **webhook / chat / form** triggers. For `schedule`, `manual`, and
 `errorTrigger` workflows the run must be started in the n8n UI. This skill packages that detour into

@@ -32,13 +32,24 @@
 
 ## Legacy in-repo config
 
-**Stray in-repo `./n8nac-config.json`?** The `workspace migrate` / `migrate-v1` commands no longer
-exist — workspace storage is v4-native (config lives in `~/n8nac-config.json` + `~/.n8n-manager/`).
-If a legacy in-repo config file exists, **delete it manually** — there is no migration command.
-(The SessionStart probe `scripts/check-workspace-migration.sh` only warns; it cannot auto-fix.)
+**In-repo `./n8nac-config.json`?** The `workspace migrate` / `migrate-v1` commands no longer exist —
+workspace storage is v4-native, and config *normally* lives in `~/n8nac-config.json` +
+`~/.n8n-manager/`. **Do not delete an in-repo config on sight.** Measured on n8nac 2.5.0: with no home
+config present, the CLI reads the in-repo file, `env list` returns its environments, and removing it
+would destroy every binding in that workspace. Decide by what exists:
+
+| in-repo | home config | meaning |
+|---|---|---|
+| v4 | absent | **live config** — leave it alone |
+| v4 | present | two configs, unclear precedence — check `env list --json` before touching either |
+| v1/v2 | present | genuinely superseded — retire with `mv … .bak`, verify `env list`, then discard |
+| v1/v2 | absent | still the only config — build a home config first, confirm it, then retire this one |
+
+The SessionStart probe `scripts/check-workspace-migration.sh` classifies exactly these four cases and
+never recommends `rm`.
 
 ## Reference n8nac version
 
-**2.3.6** (minimum 2.3.0). All setup/credential flows target the v4-native environment-centric
+**2.7.0** (minimum 2.3.0). All setup/credential flows target the v4-native environment-centric
 config model. Single source of truth: `REFERENCE_N8NAC_VERSION` constant in `scripts/setup-check.sh`.
 Bump procedure: update the constant, sync README badges + `plugin.json`, add a CHANGELOG entry.

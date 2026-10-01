@@ -52,6 +52,19 @@ negotiated once, documented centrally, passed into each build so the author prod
 A contract change touches both producer and consumer. Keep contracts concrete: name the fields and
 their types, not "the lead data".
 
+## Reuse what already runs (do this before decomposing)
+
+Read `.n8n-autopilot/instance-brief.md`, then grep `.n8n-autopilot/instance-cache.json` (never read it
+whole) for workflows whose `name` / `nodeTypes` match the jobs your decomposition needs.
+
+A leaf that already exists as a working workflow is not a leaf to build — it is a callee to wire up.
+Reuse it by id via `executeWorkflow` and mark it `unchanged` in your plan. A stack that rebuilds a
+job the instance already does correctly costs a full build cycle and then competes with the original.
+
+State reuse explicitly per sub-workflow: existing id, or new. If the cache is absent or built for a
+different environment, say so — planning a stack blind to the instance is a fact you must surface,
+not absorb.
+
 ## Mode A — DECOMPOSE (greenfield)
 
 Given a PRP use-case description:

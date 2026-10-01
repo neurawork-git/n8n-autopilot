@@ -10,10 +10,10 @@
 
 **A Claude Code plugin that turns natural-language prompts into validated, deployed n8n workflows.**
 
-[![Version](https://img.shields.io/badge/version-4.10.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.6.0-blue.svg)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
-[![n8nac](https://img.shields.io/badge/n8nac-2.3.6%20(min%202.3.0)-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
+[![n8nac](https://img.shields.io/badge/n8nac-2.7.0%20(min%202.3.0)-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
 [![Claude Code](https://img.shields.io/badge/claude%20code-plugin-d97757.svg)](https://docs.claude.com/claude-code)
 
 ```
@@ -140,9 +140,9 @@ The plugin's guidance skills activate automatically — JavaScript/Python Code n
 /n8n-autopilot:feedback
 ```
 
-The plugin learns from real usage. A `SessionEnd` hook silently records non-PII friction signal
-counts (conflict-resolve churn, non-HTTP test detours, validation loops, …) to a gitignored local
-store; a `SessionStart` nudge reminds you when feedback is pending. `/n8n-autopilot:feedback` runs a
+The plugin learns from real usage. A hook on `SessionEnd`, `PreCompact`, and session *resume* silently
+records non-PII friction signal counts (conflict-resolve churn, non-HTTP test detours, validation
+loops, …) to a gitignored local store; a `SessionStart` nudge reminds you when feedback is pending. `/n8n-autopilot:feedback` runs a
 short interview, and `/n8n-autopilot:feedback sync` pushes everything centrally as one GitHub issue
 (consent-gated — you review every record first). Captured records hold only counts + the repo name,
 never customer data.
@@ -269,7 +269,7 @@ claude plugin install n8n-as-code@n8nac-marketplace
 
 ### 2. Bind workspace to your n8n instance (n8nac ≥ 2.3)
 
-> **Reference n8nac version: 2.3.6.** The plugin targets the environment-centric config model — config lives in user home (`~/n8nac-config.json` + `~/.n8n-manager/`), NOT in the repo. The legacy `init` / `init-auth` / `init-project` commands were removed in 2.2; the `workspace pin-instance` / `set-sync-folder` / `set-project` mutators were removed in 2.3.
+> **Reference n8nac version: 2.7.0.** The plugin targets the environment-centric config model — config lives in user home (`~/n8nac-config.json` + `~/.n8n-manager/`), NOT in the repo. The legacy `init` / `init-auth` / `init-project` commands were removed in 2.2; the `workspace pin-instance` / `set-sync-folder` / `set-project` mutators were removed in 2.3.
 
 ```bash
 # 2a. Create and configure the environment (tell n8nac where workflows live)
@@ -286,7 +286,7 @@ npx n8nac env update Prod --project-name Personal
 # or: npx n8nac env update Prod --project-id <id>
 ```
 
-**Migrating from n8nac < 2.3?** The `workspace migrate-v1` command was removed in 2.3. If you have a stray in-repo `./n8nac-config.json`, delete it manually — config now lives exclusively in user home (`~/n8nac-config.json` + `~/.n8n-manager/`). Then re-run the setup flow above.
+**Migrating from n8nac < 2.3?** The `workspace migrate-v1` command was removed in 2.3. Config *normally* lives in user home (`~/n8nac-config.json` + `~/.n8n-manager/`) — but do **not** delete an in-repo `./n8nac-config.json` just because it is there: on 2.5.0 the CLI reads it, and where no home config exists it is your only one. Check `npx n8nac env list --json` first; the SessionStart probe classifies live vs superseded for you ([docs/rules/setup.md](docs/rules/setup.md)).
 
 ### 3. Pull node schemas
 
@@ -304,7 +304,7 @@ Schemas are not committed — they are instance-specific (community nodes vary p
 
 (or runs auto via SessionStart hook the next time you open Claude Code in this repo)
 
-Checks Node.js, n8nac CLI version (min 2.3.0, reference 2.3.6), workspace binding via `n8nac workspace status`, live n8n connectivity, companion plugin enabled, community-node schema coverage. Fix any errors before building workflows.
+Checks Node.js, n8nac CLI version (min 2.3.0, reference 2.7.0), workspace binding via `n8nac workspace status`, live n8n connectivity, companion plugin enabled, community-node schema coverage. Fix any errors before building workflows.
 
 ---
 
@@ -420,8 +420,9 @@ n8n-autopilot/
 │   ├── n8n-researcher.md            Phase 0: node discovery (Haiku)
 │   └── workflow-reviewer.md         Phase 1: pre-deploy code review (Sonnet)
 │
-├── hooks/hooks.json                 SessionStart: setup-check + schema-version + credential-freshness
-│                                    PreToolUse: block direct REST API (carve-out for /api/v1/data-tables)
+├── hooks/hooks.json                 SessionStart (only in n8n repos): setup-check + schema-version + credential-freshness + instance-cache
+│                                    PreToolUse (Bash + PowerShell) → scripts/pretooluse-gate.sh: block direct REST API
+│                                                (carve-out /api/v1/data-tables) + env-gate + push-gate (drift) + push-lint-gate (quality)
 │                                                + auto-guard `availableInMCP` workflow setting
 │
 ├── scripts/
@@ -430,7 +431,21 @@ n8n-autopilot/
 │   ├── check-credential-freshness.sh   SessionStart 3: stale credential refs in workflows
 │   ├── check-installed-nodes.sh     Indirect: installed nodes missing from schema cache
 │   ├── check-inventory-freshness.sh    Indirect: INVENTORY.md staleness (informational)
-│   └── ensure-mcp-trigger-setting.sh   PreToolUse on `n8nac push`: guards `availableInMCP`
+│   ├── pretooluse-gate.sh           PreToolUse entry: reads the hook's stdin JSON, runs the gates below in order
+│   ├── enforce-env.sh               one env per session (blocks un-pinned instance commands)
+│   ├── push-gate.sh                 on `n8nac push`: blocks on remote drift (CONFLICT/DIVERGED)
+│   ├── push-lint-gate.sh            on `n8nac push`: instance node check + param-version-check.py + lint-workflow.py, fail-closed
+│   ├── lib/n8n-repo-guard.sh        SessionStart probes run only in repos that touch n8n (#77)
+│   ├── lint-workflow.py             Deterministic design-quality rules on the compiled JSON (`--selftest`)
+│   ├── n8n-native-proxy.mjs         Plugin MCP server `n8n-native`: test/read tools of the session env's instance
+│   ├── instance-node-check.mjs      Push-lint stage 1: node type + typeVersion exist on the instance (get_node_types)
+│   ├── check-native-mcp.mjs         SessionStart / check-mcps: is the session env configured for native MCP?
+│   ├── lib/native-mcp.mjs           Shared: session env → endpoint + token via n8nac's config API; MCP HTTP client
+│   ├── build-instance-cache.sh      .n8n-autopilot/instance-{brief.md,cache.json}: what runs on the instance
+│   ├── check-instance-cache.sh      SessionStart: cache missing / stale / other env (INFO only)
+│   ├── ensure-mcp-trigger-setting.sh   PreToolUse on `n8nac push`: guards `availableInMCP`
+│   └── test-pipeline-gates.mjs      `node scripts/test-pipeline-gates.mjs`: gate regression check
+│                                                for build-workflow-v2 (no-op patch, Class-B verdict)
 │
 ├── schemas/nodes/                   Cached node schemas (gitignored, populated by /pull-schemas)
 ├── docs/                            Architecture, MCP guide, credentials, community-node registry, inventory

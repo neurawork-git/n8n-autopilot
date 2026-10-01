@@ -47,11 +47,13 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 0
 fi
 
-# Source only N8N_API_URL and N8N_API_KEY lines (ignore comments, handle quotes)
-eval "$(grep -E '^N8N_API_(URL|KEY)=' "$ENV_FILE" | head -2)"
+# Source only the API URL / key lines (ignore comments, handle quotes). Repos name the base URL
+# N8N_API_URL, N8N_HOST, N8N_BASE_URL or N8N_URL (#29) — accept all four, prefer N8N_API_URL.
+eval "$(grep -E '^N8N_(API_URL|HOST|BASE_URL|URL|API_KEY)=' "$ENV_FILE" | head -5)"
+N8N_API_URL="${N8N_API_URL:-${N8N_HOST:-${N8N_BASE_URL:-${N8N_URL:-}}}}"
 
 if [ -z "$N8N_API_URL" ] || [ -z "$N8N_API_KEY" ]; then
-  [ "$QUIET" -eq 0 ] && echo "  ℹ️  check-installed-nodes: N8N_API_URL or N8N_API_KEY not set in .env — skipping."
+  [ "$QUIET" -eq 0 ] && echo "  ℹ️  check-installed-nodes: no base URL (N8N_API_URL / N8N_HOST / N8N_BASE_URL / N8N_URL) or N8N_API_KEY in .env — skipping."
   exit 0
 fi
 

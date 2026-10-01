@@ -1,12 +1,12 @@
 ---
 name: n8nac-reference
-description: Authoritative reference for every `n8nac` CLI command, subcommand, and flag (n8nac 2.4.0). Use this BEFORE running `--help` interactively, BEFORE guessing flags, and BEFORE inventing a subcommand. If a command does not appear in this file, it does not exist — research stops, do not invent CLI surface. Covers workspace, env, setup, credentials, credential, workflow, execution, skills, list/find/pull/push/promote/verify/test/test-plan/fetch/resolve/convert/native-mcp, plus subcommand-level help.
+description: Authoritative reference for every `n8nac` CLI command, subcommand, and flag (n8nac 2.7.0). Use this BEFORE running `--help` interactively, BEFORE guessing flags, and BEFORE inventing a subcommand. If a command does not appear in this file, it does not exist — research stops, do not invent CLI surface. Covers workspace, env, setup, credentials, credential, workflow, execution, skills, list/find/pull/push/promote/verify/test/test-plan/fetch/resolve/convert/native-mcp, plus subcommand-level help.
 allowed-tools: Read, Grep, Glob, Bash(grep:*)
 ---
 
 # n8nac CLI — Authoritative Reference
 
-The full `n8nac --help` tree is captured in [`reference.md`](reference.md) (auto-generated, 61 command/subcommand blocks across 24 top-level groups). Read it whenever you need to:
+The full `n8nac --help` tree is captured in [`reference.md`](reference.md) (auto-generated, 68 command/subcommand blocks across 24 top-level groups). Read it whenever you need to:
 
 - Know if a command exists (rule: **not in the file → does not exist**, do not invent it).
 - Look up exact flag names and short/long forms.

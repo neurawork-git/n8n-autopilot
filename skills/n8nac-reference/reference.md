@@ -1,6 +1,6 @@
 # n8nac CLI Reference — Generated
 
-Generated automatically from `n8nac --help` recursion. n8nac version: **2.4.0**.
+Generated automatically from `n8nac --help` recursion. n8nac version: **2.7.0**.
 
 This file is the source of truth for what subcommands and flags exist. If a command appears here, it exists. If it does not appear here, **it does not exist** — do not invent it.
 
@@ -26,25 +26,25 @@ Options:
   -h, --help                           display help for command
 
 Commands:
-  telemetry                            Manage anonymous n8n-as-code telemetry
   workspace                            Inspect n8n workspace configuration
   env|environment                      Manage n8n workspace environments
   setup [options]                      Choose how this facade should use n8n
-                                       runtime capabilities
-  setup-modes [options]                List supported facade setup modes
+                                       runtime capabilities. A workspace .env
+                                       holding N8N_HOST (and optionally
+                                       N8N_API_KEY) is picked up on its own, so
+                                       --host and --api-key are only needed
+                                       when there is none.
   credentials                          Manage credential readiness recipes and
                                        local inventory
   list [options]                       Display a table of all workflows and
                                        their current status (local, remote, or
                                        both). By default, only non-archived
                                        workflows are shown.
-  find [options] <query>               Find workflows quickly by partial name,
-                                       workflow ID, or local filename. By
-                                       default, only non-archived workflows are
-                                       searched.
   pull <workflowId>                    Download a single workflow from n8n to
                                        local directory
   push [options] <path>                Upload a single local workflow to n8n
+                                       (on a published workflow, this also
+                                       releases it)
   promote [options] [path]             Promote a local workflow file from one
                                        workspace environment to another
   verify <workflowId>                  Fetch a workflow from n8n and validate
@@ -71,9 +71,6 @@ Commands:
                                        iterate).
   test-plan [options] <workflowId>     Inspect how a workflow can be tested via
                                        HTTP and infer a suggested payload
-  fetch <workflowId>                   Fetch remote state for a specific
-                                       workflow (update internal cache for
-                                       comparison)
   resolve [options] <workflowId>       Resolve a conflict for a specific
                                        workflow
   convert [options] <file>             Convert workflows between JSON and
@@ -82,8 +79,6 @@ Commands:
                                        directory
   native-mcp                           Inspect optional native n8n MCP assist
                                        configuration and capabilities
-  mcp [options]                        Start the dedicated n8n-as-code MCP
-                                       server
   workflow                             Workflow lifecycle management (present,
                                        activate, deactivate, inspect
                                        credentials)
@@ -191,9 +186,9 @@ Options:
   --base-url <url>            Remote n8n URL to store in this workspace
                               environment
   --managed-instance <id>     Local managed n8n instance ID to reference
-  --api-key <key>             Store a local API key for --base-url without
-                              committing it
-  --api-key-stdin             Read the local API key for --base-url from stdin
+  --api-key <key>             Store a local API key for this environment
+                              without committing it
+  --api-key-stdin             Read this environment local API key from stdin
   --project-id <id>           n8n project ID
   --project-name <name>       n8n project display name
   --workflows-path <path>     Directory that contains this environment
@@ -202,6 +197,8 @@ Options:
   --folder-sync               Enable folder sync for this environment
   --custom-nodes-path <path>  Custom nodes path for this environment
   --description <text>        Environment description
+  --pin                       Pin this environment as the workspace default in
+                              the same process (saves one cold start)
   --json                      Output environment as JSON
   -h, --help                  display help for command
 ```
@@ -214,12 +211,28 @@ Usage: n8nac env auth [options] [command]
 Manage local authentication for n8n environments
 
 Options:
-  -h, --help                  display help for command
+  -h, --help                            display help for command
 
 Commands:
-  set [options] <name-or-id>  Store a local API key for a remote n8n
-                              environment without committing it
-  help [command]              display help for command
+  set [options] <name-or-id>            Store a local API key for a remote n8n
+                                        environment without committing it
+  clear [options] <name-or-id>          Remove the API key for an environment,
+                                        plus the folder-login session for its
+                                        instance target (shared by any
+                                        environment on that target)
+  folder-login [options] <name-or-id>   [Experimental] Store a session token so
+                                        folderSync's pull can reconstruct
+                                        nested folders — n8n's public workflow
+                                        API never reports a workflow's folder.
+                                        Logs in once via /rest and saves the
+                                        session cookie locally until its
+                                        server-issued expiry (never the
+                                        password). Clear it with
+                                        `folder-logout`.
+  folder-logout [options] <name-or-id>  [Experimental] Remove the stored
+                                        folderSync session token for an
+                                        environment (paired with folder-login).
+  help [command]                        display help for command
 ```
 
 ### `n8nac env list`
@@ -278,6 +291,8 @@ Arguments:
 
 Options:
   --json      Output resolved environment as JSON
+  --no-probe  Skip the instance reachability check and report configuration
+              only
   -h, --help  display help for command
 ```
 
@@ -296,9 +311,9 @@ Options:
   --base-url <url>            Move this environment to a remote n8n URL
   --managed-instance <id>     Move this environment to a local managed n8n
                               instance
-  --api-key <key>             Store a local API key for --base-url without
-                              committing it
-  --api-key-stdin             Read the local API key for --base-url from stdin
+  --api-key <key>             Store a local API key for this environment
+                              without committing it
+  --api-key-stdin             Read this environment local API key from stdin
   --project-id <id>           n8n project ID
   --project-name <name>       n8n project display name
   --workflows-path <path>     Directory that contains this environment
@@ -320,7 +335,9 @@ Options:
 ```
 Usage: n8nac setup [options]
 
-Choose how this facade should use n8n runtime capabilities
+Choose how this facade should use n8n runtime capabilities. A workspace .env
+holding N8N_HOST (and optionally N8N_API_KEY) is picked up on its own, so
+--host and --api-key are only needed when there is none.
 
 Options:
   --mode <mode>      managed-local, connect-existing, or generation-only
@@ -568,7 +585,8 @@ Options:
 ```
 Usage: n8nac push [options] <path>
 
-Upload a single local workflow to n8n
+Upload a single local workflow to n8n (on a published workflow, this also
+releases it)
 
 Arguments:
   path        Path to a local workflow file inside the active sync scope
@@ -577,6 +595,8 @@ Arguments:
 Options:
   --verify    After pushing, fetch the workflow from n8n and validate it
               against the local schema
+  --draft     Keep production on the version it already ran, so the change can
+              be checked in n8n first
   -h, --help  display help for command
 ```
 
@@ -787,10 +807,10 @@ Options:
   -h, --help                        display help for command
 
 Commands:
-  configure [options] [name-or-id]  Configure optional native n8n MCP assist
-                                    for a workspace environment without
-                                    committing secrets
-  disable [options] [name-or-id]    Disable native n8n MCP assist for a
+  configure [options] [name-or-id]  Configure native n8n MCP usage for a
+                                    workspace environment without committing
+                                    secrets
+  disable [options] [name-or-id]    Disable native n8n MCP usage for a
                                     workspace environment and remove its stored
                                     token
   status [options] [name-or-id]     Show native n8n MCP assist configuration
@@ -808,8 +828,8 @@ Commands:
 ```
 Usage: n8nac native-mcp configure [options] [name-or-id]
 
-Configure optional native n8n MCP assist for a workspace environment without
-committing secrets
+Configure native n8n MCP usage for a workspace environment without committing
+secrets
 
 Arguments:
   name-or-id              Environment name or ID; defaults to pinned
@@ -820,6 +840,9 @@ Options:
                           <environment-url>/mcp-server/http
   --token <token>         Native n8n MCP bearer token to store locally
   --token-stdin           Read the native n8n MCP bearer token from stdin
+  --level <level>         Native MCP usage level (cumulative): 1 = schema sync
+                          (instance ontology overlay), 2 = + live validation at
+                          push, 3 = + read-only discovery
   --timeout-ms <ms>       Native MCP request timeout in milliseconds
   --allow-execution-data  Allow full live execution payloads when explicitly
                           requested
@@ -837,7 +860,7 @@ Options:
 ```
 Usage: n8nac native-mcp disable [options] [name-or-id]
 
-Disable native n8n MCP assist for a workspace environment and remove its stored
+Disable native n8n MCP usage for a workspace environment and remove its stored
 token
 
 Arguments:
@@ -1201,26 +1224,50 @@ Usage: n8nac skills [options] [command]
 AI tools: search nodes, docs, guides, validate workflows, and more
 
 Options:
-  -h, --help                    display help for command
+  -h, --help                        display help for command
 
 Commands:
-  search [options] <query>      Search for n8n nodes and documentation
-  list [options]                List available nodes, documentation categories,
-                                or guides
-  node-info [options] <name>    Get complete node information as TypeScript
-                                code
-  node-schema [options] <name>  Get TypeScript code snippet for a node (quick
-                                reference)
-  docs [options] [title]        Access n8n documentation pages
-  guides [options] [query]      Find workflow guides, tutorials, and
-                                walkthroughs
-  related <query>               Find related nodes and documentation
-  validate [options] <file>     Validate a workflow file (JSON or TypeScript)
-  update-ai [options]           Update AI Context files (AGENTS.md)
-  mcp [options]                 Compatibility redirect to `n8nac mcp`
-  examples                      Search and download community workflows (7000+
-                                from n8nworkflows.xyz)
-  help [command]                display help for command
+  search [options] <query>          Search for n8n nodes and documentation
+  list [options]                    List available nodes, documentation
+                                    categories, or guides
+  node-info [options] <names...>    Get complete node information as TypeScript
+                                    code
+  node-schema [options] <names...>  Get TypeScript code snippet for a node
+                                    (quick reference)
+  batch [options]                   Run multiple read-only ontology lookups in
+                                    one process (search, node-info,
+                                    node-schema, examples-search,
+                                    examples-info)
+  docs [options] [title]            Access n8n documentation pages
+  guides [options] [query]          Find workflow guides, tutorials, and
+                                    walkthroughs
+  related <query>                   Find related nodes and documentation
+  validate [options] <file>         Validate a workflow file (JSON or
+                                    TypeScript)
+  update-ai [options]               Update AI Context files (AGENTS.md)
+  mcp [options]                     Compatibility redirect to `n8nac mcp`
+  examples                          Search and download community workflows
+                                    (7000+ from n8nworkflows.xyz)
+  help [command]                    display help for command
+```
+
+### `n8nac skills batch`
+
+```
+Usage: n8nac skills batch [options]
+
+Run multiple read-only ontology lookups in one process (search, node-info,
+node-schema, examples-search, examples-info)
+
+Options:
+  --calls <json>       JSON array of calls, e.g.
+                       [{"cmd":"search","query":"gmail"},{"cmd":"node-info","name":"gmailTool"}].
+                       Reads stdin when omitted.
+  --calls-file <path>  Read the JSON calls array from a file (avoids
+                       shell-quoting)
+  --compact            Apply compact projection to every call (token-efficient)
+  --json               Output as JSON array (default, stdout only, no hints)
+  -h, --help           display help for command
 ```
 
 ### `n8nac skills docs`
@@ -1305,32 +1352,37 @@ Options:
 ### `n8nac skills node-info`
 
 ```
-Usage: n8nac skills node-info [options] <name>
+Usage: n8nac skills node-info [options] <names...>
 
 Get complete node information as TypeScript code
 
 Arguments:
-  name        Node name (exact, e.g. "googleSheets")
+  names       One or more node names (exact or fuzzy, e.g. "googleSheets"
+              "gmail")
 
 Options:
   --debug     Show custom nodes resolution details on stderr
   --json      Output as JSON instead of TypeScript
+  --compact   Compact projection: identity + required params + snippet
+              (token-efficient)
   -h, --help  display help for command
 ```
 
 ### `n8nac skills node-schema`
 
 ```
-Usage: n8nac skills node-schema [options] <name>
+Usage: n8nac skills node-schema [options] <names...>
 
 Get TypeScript code snippet for a node (quick reference)
 
 Arguments:
-  name        Node name
+  names       One or more node names
 
 Options:
   --debug     Show custom nodes resolution details on stderr
   --json      Output as JSON instead of TypeScript
+  --compact   Compact projection: minimal snippet + required fields
+              (token-efficient)
   -h, --help  display help for command
 ```
 
@@ -1364,6 +1416,8 @@ Options:
   --limit <limit>        Limit results (default: "10")
   --debug                Show custom nodes resolution details on stderr
   --json                 Output as JSON instead of TypeScript
+  --compact              Compact projection: minimal snippets only, no docs or
+                         hints (token-efficient)
   -h, --help             display help for command
 ```
 
@@ -1426,4 +1480,4 @@ Options:
 
 ---
 
-_End of generated reference. 2.4.0_
+_End of generated reference. 2.7.0_

@@ -204,6 +204,20 @@ try {
 
 ---
 
+### Hardened instances deny `$env` and `require()` (#97)
+
+Production instances commonly run with `N8N_BLOCK_ENV_ACCESS_IN_NODE=true` and an empty
+`NODE_FUNCTION_ALLOW_BUILTIN` / `NODE_FUNCTION_ALLOW_EXTERNAL`. There, `$env.SECRET` throws
+*access to env vars denied* and `require('crypto')` throws *Module crypto is disallowed* — at
+runtime, after every gate was green. Do not build on either:
+
+- Secrets → a credential on a native node (HTTP Request with `httpHeaderAuth`, …), never `$env`.
+- HMAC / hashing → the **Crypto** node (`n8n-nodes-base.crypto`), not `require('crypto')`.
+- If Code must use a builtin, the sticky note names the instance setting it depends on, and the
+  push-lint gate warns (`code-env-access`) so the reviewer checks the target instance allows it.
+
+---
+
 ## Top 5 Mistakes
 
 1. **No return statement** → Add `return items.map(item => ({json: item.json}));`

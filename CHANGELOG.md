@@ -2,6 +2,382 @@
 
 All notable changes to **n8n-autopilot** are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [5.6.0] — 2026-09-30
+
+The reliability release. Triggered by a full pass over 68 open feedback issues, the synced friction
+records and every customer-repo session of the last 120 days — which showed that the gates this
+plugin is built around had never fired outside the plugin's own repo.
+
+### Fixed
+- **The PreToolUse gates were dead in real use.** Every gate read `$CLAUDE_TOOL_INPUT`; Claude Code
+  delivers hook input as JSON on stdin and sets no such variable, so `INPUT` was empty and every
+  gate exited 0. Measured: dozens of `npx n8nac push` calls, direct `curl` against `/api/v1` and
+  un-pinned sessions across the customer repos — not one `[push-gate]`, `[enforce-env]` or
+  `[push-lint]` line in 120 days of tool results. One dispatcher now (`scripts/pretooluse-gate.sh`,
+  `matcher: Bash|PowerShell`) reads stdin, extracts `tool_input.command` and runs curl-block →
+  enforce-env → push-gate → push-lint → mcp-trigger guard. The PowerShell tool, previously unmatched
+  entirely, is gated the same way. `bash scripts/test-pretooluse-gate.sh` feeds both tools real
+  stdin JSON (13 cases).
+- **Greenfield author no-op halted stack resumes at 0/n (#58, #87).** `build.workflow.js` now
+  continues into validate/deploy when the author reports `noChangeNeeded` with an existing file,
+  as the edit flow already did. Gate test 10.
+- **Reviewer skills were dead references.** `workflow-reviewer` listed `n8n-validation-expert` and
+  `n8n-workflow-patterns`, which exist in no installed plugin; it now loads `n8n-architect`,
+  `n8n-orchestration-patterns`, `n8n-code-javascript`.
+- **Tester still described the 5.3 activate → production-URL test path**, contradicting the 5.4
+  pinned MCP path (#37). Activation is now only the explicit final step of a build / stack.
+- `init-repo` prescribed `env use`, which its own env-gate blocks (#49); it now pins
+  `N8NAC_ENVIRONMENT` in `.claude/settings.json`. Its `.gitignore` template ignored that same
+  settings file, leaving fresh clones with the plugin silently disabled (#54) — only
+  `settings.local.json` is ignored now. It checks for an existing same-name GitHub remote before
+  scaffolding (#53), and its reference n8nac version reads 2.7.0 (was 2.3.6).
+- `feedback` skill: `$CLAUDE_PLUGIN_ROOT` is empty in the Bash tool, so every documented script call
+  failed with MODULE_NOT_FOUND (#74, #100). The skill resolves the plugin root once into `$PR`.
+- `check-installed-nodes.sh` accepts `N8N_HOST` / `N8N_BASE_URL` / `N8N_URL` as the base-URL name
+  (#29); `setup-check.sh` honours `NODE_TLS_REJECT_UNAUTHORIZED=0` like n8nac (#52).
+- Cheat-sheet `oAuth2Api` recipe no longer ships `allowedHttpRequestDomains`, which n8n ≥ 2.20
+  rejects (#89); it says to run `credential schema` first.
+
+### Added
+- **Push-Lint stage 1b — version-gated parameters** (`scripts/param-version-check.py`). n8n gates
+  parameters per `typeVersion` via `displayOptions['@version']`; `n8nac skills validate` checks the
+  key's name, not the gate (#94, #84, #82, #60). The check reads the gated schema through n8nac's
+  own `NodeSchemaProvider` for all types in one process (`scripts/node-schemas.mjs`, ~2 s cold,
+  cached 24 h per type) and blocks a top-level key that exists only in other versions, naming the
+  versions that have it. `--selftest` included.
+- **Error-handling lint** (`lint-workflow.py`): `no-error-strategy` blocks a top-level workflow with
+  external calls that has neither `settings.errorWorkflow` nor a wired error output;
+  `masked-error` now requires the node's main output to feed an If/Switch/Filter/Code that tests
+  `$json.error` (a `notes` justification no longer exempts — `executeWorkflow`/Postgres with
+  `continueRegularOutput` reported success for failed steps); `retry-missing` warns on
+  `httpRequest` without `retryOnFail` (#88); `code-env-access` warns on `$env` / `require()` in Code
+  nodes (#97). Calibrated on the 79 local workflows of a real instance (numbers under *Known gaps* below).
+- **Lint block = fix loop in the pipelines.** `build.workflow.js` and `edit.workflow.js` treat a
+  `[push-lint] BLOCKED` from the deployer as a defect list: author fixes exactly the BLOCK lines,
+  validator re-checks, deployer pushes again (max 3, `stage: 'lint'`). Drift / env blocks still
+  fail at deploy, now with `blockedBy`. `n8n-deployer` returns hook output verbatim and backs off
+  15/45/90 s on 5xx (#88). Gate tests 8 + 9.
+- **Error strategy flows from research to author.** `n8n-researcher` reports the instance's
+  errorTrigger workflow as `errorWorkflowId`; the author prompt tells the author to set
+  `settings.errorWorkflow` to it, or to wire error outputs when the instance has none.
+- **SessionStart probes run only in n8n repos** (`scripts/lib/n8n-repo-guard.sh`, #77): pinned env,
+  a `*.workflow.ts`, `.n8n-autopilot/`, n8nac config, or a CLAUDE.md that mentions the plugin.
+- `check-native-mcp.mjs` reports `WARN:` (was `INFO:`) when the pinned env has no native MCP —
+  that state blocks every push.
+- Reviewer checklist 16–20: useful error branches / idempotent retries, explicit `$('Node')`
+  references across gaps (#64), sentinels through an If before URL interpolation (#75), read-back
+  after silent-success API writes (#96), Code-node runtime access (#97). Author rules and the
+  `n8n-code-javascript` skill carry the same.
+
+### Known gaps (carried)
+- Native MCP token for the internal tester env answers 401 (rotated) — reconfigure before the next
+  live gate run; until then stage 1 of the push-lint gate blocks every push there, by design.
+- Existing workflows: of the 60 local ones that compile, 30 have no error strategy and 11 carry a
+  `continueOnFail` without a downstream check. They block on their next push until fixed — that is
+  the point, and `N8N_AUTOPILOT_SKIP_LINT=1` remains the user's override.
+- `no-description` (#31) and `$json`-across-gaps (#64) stay reviewer checks: the compiled JSON
+  carries no description field, and the data source of a `$json` read is not decidable statically.
+
+## [5.5.0] — 2026-09-22
+
+### Changed
+- **`n8n-native` ships with the plugin.** A stdio MCP server (`scripts/n8n-native-proxy.mjs`,
+  declared in `plugin.json`) forwards the instance's test and read tools — `prepare_test_pin_data`,
+  `test_workflow`, `execute_workflow`, `get_execution`, `get_workflow_details`, `search_workflows`,
+  `get_node_types`, `search_nodes` — to the instance of the PINNED session env. Endpoint and token
+  come from n8nac's store (`native-mcp configure`), so a customer repo reaches its own instance and
+  no token sits in Claude Code's config. Without `N8NAC_ENVIRONMENT` it refuses instead of guessing.
+  Write tools are not exposed at all, so the 5.4.0 write-block hook is gone, and so is the manual
+  `claude mcp add` user-scope registration (it pointed every repo at one instance).
+- `instance-node-check.mjs` and the proxy share `scripts/lib/native-mcp.mjs` (env resolution with
+  config walk-up, MCP HTTP client with 429 retry). The gate calls it with plain `node`.
+
+### Added
+- **Setup integration.** SessionStart probe `check-native-mcp.mjs --quiet` prints the exact remedy
+  when the pinned env has no native MCP config (INFO only — the fix needs a token from the n8n UI).
+  `/n8n-autopilot:init-repo` step 4b and `/n8n-autopilot:check-mcps` step 4b (`--live`: connects and
+  checks the test tools exist).
+
+## [5.4.1] — 2026-09-22
+
+Wired and measured against the live internal instance. 5.4.0 rested on the n8n source; the running
+instance differs in three places, all fixed here.
+
+### Changed
+- **Default test = pinned, no side effects.** The tester runs `prepare_test_pin_data` →
+  `test_workflow` → `get_execution`: triggers, credentialed nodes and HTTP Request nodes run on pin
+  data, logic nodes run for real. Works for every trigger type, so the `non-mcp` / `manual-required`
+  branches are gone. Live `execute_workflow` (manual = pushed draft, real side effects) only when the
+  caller passes `testData`. Tool name is `prepare_test_pin_data` (5.4.0 had
+  `prepare_workflow_pin_data`). Gate test 5 now expects the pinned path, new test 7 the live path.
+- **Push-Lint-Gate stage 1 checks node types itself.** The instance exposes no
+  `validate_node_config`, so n8nac's level-2 push validation is a no-op (it warns and validates
+  against its bundled catalogue). New `scripts/instance-node-check.mjs` asks the instance's
+  `get_node_types` per type@version, using the env's endpoint + token from n8nac's own config API.
+  Blocks core nodes whose version or type the instance lacks (hidden/deprecated nodes such as
+  `spreadsheetFile` included); community nodes only warn, because the catalogue misses installed
+  ones (PandaDoc answered "not found" while it ran the same day). Retries HTTP 429 twice.
+  Over the 78 local workflows: 77 pass, one blocks on `spreadsheetFile`.
+
+### Documented (docs/rules/testing.md)
+- `native-mcp status` / `doctor` report "disabled" from a repo dir — pass `--cwd <dir of n8nac-config.json>`.
+- The n8nac MCP broker sends `version` as a number; the instance rejects it (`-32602`).
+- `--token-stdin` reads a pipe and waits silently without one — PowerShell and Bash recipes.
+
+## [5.4.0] — 2026-09-22
+
+### Changed
+- **Tests run through the instance's own MCP server, not its URLs.** `build-workflow-v2` and
+  `edit.workflow.js` call native n8n `execute_workflow` with `executionMode: "manual"` (the pushed
+  draft) and poll `get_execution`. Schedule and manual triggers are tested headless for the first
+  time (#10, #72). Nothing is activated to test, so the activate → self-inflicted drift → `fetch`
+  dance is gone (#37). Form, chat and webhook inputs are typed instead of a raw POST (#59, #71, #91).
+  `prepare_workflow_pin_data` covers nodes that need real remote ids. `n8n-tester` gets the MCP tools;
+  a missing server or `availableInMCP: false` returns `mcp-unavailable` and FAILS the build with the
+  setup hint — no silent fallback to `n8nac test`. Setup: `docs/rules/testing.md`.
+- **typeVersion is judged by the instance at push.** Agents no longer pick or demand "the highest
+  version n8nac knows" (reviewer #9, author, node-verifier). n8nac 2.7.0's push preflight calls the
+  instance's `validate_node_config` at native MCP level 2; that is the authority (#85, #82, #62, #94).
+
+### Added
+- **Push-Lint-Gate** (`scripts/push-lint-gate.sh`, PreToolUse on `npx n8nac push`). Stage 1 refuses
+  the push unless native MCP assist is level ≥ 2, reachable and exposes `validate_node_config` —
+  otherwise n8nac silently validates against its bundled catalogue. Stage 2 runs
+  `scripts/lint-workflow.py` on the `convert` output and blocks on: 0-node compile (#20),
+  missing/dead trigger, orphan node (#93), `continueOnFail`/`continueRegularOutput` without a
+  `notes` reason, `continueErrorOutput` with an unwired error output, unbalanced `=`-expressions
+  (#92), empty Code node, `responseNode` webhook without respond node, `availableInMCP` not true.
+  Warns on Code-node share > 50 % (#76), missing sticky, overlapping positions. Calibrated on 78
+  real workflows; two false-positive classes fixed. `python scripts/lint-workflow.py --selftest`.
+- **MCP write block** — PreToolUse hook refuses workflow and data-table write tools on the
+  `n8n-native` server; it is registered for testing only.
+- `scripts/test-pipeline-gates.mjs` cases 5 + 6: schedule trigger proven via MCP without
+  activation; `mcp-unavailable` fails the build.
+
+## [5.3.6] — 2026-09-15
+
+### Changed
+- **Reference n8nac bumped 2.5.0 → 2.7.0** (2.6.0 + 2.7.0 both shipped 2026-09-11). `reference.md`
+  regenerated from the live `--help` tree; cheat-sheet gains the new surface: `push --draft` (2.6+
+  `push` otherwise *releases* the running version — the old "push writes a draft" mental model is
+  wrong for published workflows), `skills batch --calls-file … --compact` (several ontology lookups
+  in one process) and `node-info --compact`. Transformer 2.0.1 now round-trips `continueOnFail`,
+  `disabled`, `notes`, `notesInFlow`, several sub-nodes on one AI input, and unmodelled node
+  properties — earlier `pull` silently dropped them.
+- **Companion plugin `n8n-as-code` reference is 2.4.1** (was 2.3.2 at user scope; 2.4.1 pins its
+  ontology to **n8n 2.38.7**). Measured against a customer instance on n8n **2.20.11**: the
+  bundled knowledge is 18 minor versions ahead of the target, which is the root of the
+  version-drift findings (#62, #82, #85, #94). No guard for it exists yet — see *Known gaps*.
+
+### Added
+- **Instance cache** (`scripts/build-instance-cache.sh` + `check-instance-cache.sh` SessionStart
+  probe): `.n8n-autopilot/instance-brief.md` / `instance-cache.json` describe what actually runs
+  on the pinned instance (active workflows, proven node types, credential names, custom nodes).
+  Consumed by `n8n-researcher` (local prior art before the public template corpus),
+  `n8n-node-verifier` (`provenOnInstance`), `n8n-author` (credential ids from `credentials[]`)
+  and `n8n-stack-architect` (reuse existing workflows as callees). Refreshed by the build skills
+  before dispatch; the probe only reports (`INFO:`) because a rebuild hits the instance twice.
+
+### Known gaps (carried)
+- The cache holds **no `typeVersion`** — `n8nac list --json` does not return it and `pull` drops
+  it during Decorator-TS conversion — so "highest version n8nac knows" is still what the author
+  picks and what the reviewer (point 9) demands, while the instance may reject it (#85).
+- Native n8n MCP assist (n8nac 2.7.0) stays **read-only**: `execute_workflow` / `test_workflow`
+  wrappers are documented upstream as future work, so non-HTTP testing still goes through
+  `/n8n-autopilot:test-manual`.
+
+## [5.3.5] — 2026-07-28
+
+### Added
+- **`build-stack-v2` states its target env before it builds anything (#14).** New phase-0 `Preflight`
+  resolves the active env / project / host, logs it, and returns it as `envContext` in every report —
+  and says so explicitly when `N8NAC_ENVIRONMENT` is unset, because the run would then follow the
+  SHARED global active env that another session can change mid-run. `enforce-env.sh` already refuses
+  un-pinned instance commands, but only once a build agent is running, where the abort reads as an
+  opaque tool error instead of "wrong environment".
+- **EXTEND refuses to rebuild a stack it could not find.** Zero sub-workflows out of comprehension now
+  returns `status: 'needs-decision'` (`reason: 'empty-comprehension'`) instead of falling through. That
+  fall-through was the actual damage path: on a wrong-project env the mirror holds different workflows,
+  comprehension finds nothing, the delta planner marks **every** sub-WF `new`, and the pipeline rebuilds
+  the whole stack against the wrong project — looking like normal progress the entire time. The skill
+  doc spells out not to "fix" it by re-running as greenfield.
+
+### Added (issue sweep)
+- **`agents/n8n-author.md` — "Silent-failure traps"** table for four defects that pass `validate --strict`
+  *and* report `success`, because the parameter exists but is inert (#17, #9, #15, #19): an `httpRequest`
+  body dropped when `specifyBody`/`contentType` do not match it; array params given as `{}` (GitHub
+  `labels` → `labels.map is not a function`, and silently discarded entirely without push access);
+  `binaryPropertyName` without the `binaryData` flag writing a 0-byte file; fetch allowlists that never
+  return fields added later.
+- **`agents/n8n-tester.md` — "`status: success` is not proof"**. An execution succeeds when no node threw,
+  which is weaker than "it did its job". The tester must read the output before certifying: zero-byte
+  artifacts, unfiltered result sets, silently dropped fields, binary stubs — and check for a pending
+  **draft** before treating unchanged behaviour as a wiring defect (#18, #15).
+- **Estate Health in `/n8n-autopilot:inventory`** (#30, #31) — Code-vs-native branching ratio and the share
+  of workflows documenting no intent. Both drifts are invisible per file and only exist in aggregate,
+  which is why they accumulate; measured on the tester repo: ratio 0.90, and 71/78 files with no
+  `description` anywhere.
+- **`docs/troubleshooting/auth-and-scopes.md`** (#32, #8, #28, #6) — a `403` on one endpoint while the same
+  key works everywhere else means the API key lacks that *scope*: n8n checks the key's own `scopes` column
+  with **no** fallback to the user's global role, and never backfills scopes onto an existing key, so
+  re-pasting it provably cannot help. `sync-credentials` and `find-credential` now detect the 403 and print
+  this cause, the fix, and the UI route to a credential ID instead of a generic failure. Also: `env auth` is
+  per **environment**, not per instance target; and the diagnostic path for an activation failure whose
+  cause n8nac swallows.
+- **`docs/rules/gates.md` — batch deploys** (#21): self-inflicted activation drift clears with `fetch`, a
+  stale local needs the per-file `pull`, and a genuinely local-authoritative batch exports the bypass once
+  around the loop. No "remote is an ancestor" auto-detection: n8nac reports a status word, not ancestry,
+  and a wrong guess silently destroys a UI edit.
+
+## [5.3.4] — 2026-07-28
+
+### Fixed
+- **`check-workspace-migration.sh` no longer tells you to delete a config n8nac is actively using.** It
+  flagged any in-repo `n8nac-config.json` as stray and printed `rm <repo>/n8nac-config.json`. On 2.5.0 the
+  CLI reads that file, and where no home config exists it is the *only* one — the advice destroyed every
+  environment binding in the workspace. The probe now reads whether `~/n8nac-config.json` /
+  `~/.n8n-manager/` exist and classifies four cases (live / conflicting / superseded / sole-but-old),
+  suggests a reversible `mv` instead of `rm` even where deletion is safe, and stays **silent** in
+  `--quiet` when the in-repo config is simply the live one. Same wrong instruction removed from
+  `CLAUDE.md`, `docs/rules/setup.md`, `README.md`, `README.de.md`.
+- **Partial feedback pushes no longer discard the records they did not send.** `sync.sh` marked *every*
+  unsynced record as synced on success; with the new `--only` that would silently drop exactly the
+  findings the user chose to withhold — invisibly, since the store is gitignored and nothing is re-sent.
+  It now marks only what was actually pushed.
+- Stale version claims corrected across the docs: n8nac reference `2.3.6` → **2.5.0** (matching the
+  `REFERENCE_N8NAC_VERSION` SSOT) and the README version badge `4.10.0` → current, in both languages.
+  The CRLF notes in the skills now say the corruption is *sporadic* (`sync.workflow.js` was CRLF in
+  5.3.0/5.3.1, LF in 5.3.2) — the old wording implied it was deterministic, inviting people to skip the
+  normalization once they saw an LF copy.
+
+### Added
+- **`scripts/check-custom-nodes-resolution.sh`** — SessionStart probe for the silent community-node
+  trap. When `workflows/` reference community packages while n8nac has no custom-node source loaded,
+  `skills search` / `node-info` return a confident **empty** result instead of erroring, and research
+  concludes the node does not exist. The probe cross-references discovered community packages against
+  `customNodesLoaded` (scraped from `skills list --nodes --debug`, which prints that block to **stderr**)
+  and spells out both traps: an empty result for a listed package is a resolution failure, and
+  `pull-schemas` does *not* fix it — it fills the plugin's own cache, a different mechanism. `INFO:` only,
+  no auto-action: authoring `n8nac-custom-nodes.json` is not something the plugin can do for you.
+- **`sync.sh --only 1,3`** plus a compact confirmation flow — the feedback skill now shows one line per
+  finding and asks via `AskUserQuestion` (push all / select / cancel) instead of dumping records verbatim.
+- **`scripts/test-feedback-sync.sh`** — 8 checks against a local HTTP stub (never the real webhook)
+  covering partial push, full push, and an invalid selection, for both what is *sent* and what is *marked*.
+- Author rule: workflow class identifiers must be plain ASCII (#20's greenfield half). Deliberately narrow
+  — `name`, `description`, node names and sticky-note text keep their umlauts.
+
+## [5.3.3] — 2026-07-28
+
+### Fixed
+- **SessionStart probes no longer mandate an auto-action that provably cannot succeed.** `AUTOPILOT_ACTION_REQUIRED`
+  is a hard instruction — the assistant must run the named command without asking — so a probe that emits it for a
+  condition the action cannot resolve burns a pipeline every session and teaches everyone to ignore the mechanism.
+  Both offenders tested a different condition than their action repairs:
+  - `check-credential-freshness.sh` flagged credential references by **ID**, while `--fix-workflows` joins on
+    credential **name** inside the pinned project. Measured on the tester instance: 6 IDs reported stale, fixer
+    output `No stale credential IDs found.` — all six are orphans (the name resolves nowhere), which no rewrite can
+    repair. The probe now asks the fixer (`--dry-run`, new exit code 3 == "would rewrite") before emitting the
+    signal, and otherwise reports the orphans as `INFO` with the manual fix.
+  - `check-mirror-drift.sh` trusted `n8nac list`'s status field alone. It now checks whether the reported
+    `filename` actually exists under `workflows/`, and only real absence counts as drift.
+- **Corrects the 5.3.2 explanation of the non-converging mirror sync.** That entry blamed `pull` refreshing only
+  NEW local state entries. Re-measured today: both stuck workflows have a **present** state entry with the correct
+  `filename`, the file is on disk under exactly that name, the decorator carries the right id, and every one of the
+  78 remote filenames exists locally — yet `list` still reports `EXIST_ONLY_REMOTELY`, and neither `pull` nor
+  `fetch` clears it. Local validity is not the discriminator either (4 `TRACKED` workflows fail `validate`). It is
+  an n8nac status artefact with no local remedy, so the probe now classifies it as such instead of demanding a sync.
+
+### Added
+- `scripts/test-probe-symmetry.sh` — regression test for the probe/action symmetry rule. Runs both probes in a temp
+  workspace against a stubbed `npx` and a stubbed fixer; asserts the mandatory signal fires for a genuinely fixable
+  condition and stays silent for a phantom or orphan one. Verified discriminating: 2 of its 6 checks fail against 5.3.2.
+
+## [5.3.2] — 2026-07-27
+
+### Fixed
+- **A dropped structured-output call in `mirror-sync`'s Verify phase discarded a fully successful run.**
+  Observed live: all 4 remote-only workflows pulled and landed on disk, then the verify agent finished
+  without emitting its result — the script called it bare (no `safe()` wrapper, unlike the v2 pipelines),
+  so the run aborted with `agent({schema}): subagent completed without calling StructuredOutput` and
+  reported `failed`. The pulled file paths survived only in the journal. Discover + Verify now use the
+  same retry-plus-fallback helper; an inconclusive verify returns `partial` **with** the pulled files and
+  `remoteOnlyRemaining: null`.
+- **`mirror-sync` now says when re-running cannot help.** `npx n8nac pull` refreshes a workflow's local
+  state entry only when that entry is NEW: measured on four workflows — the two with fresh entries got
+  today's `lastSyncedAt`, the two with stale February entries kept them despite a correct file on disk
+  with the right decorator id, and a serial re-pull changed nothing. They keep reporting
+  `EXIST_ONLY_REMOTELY`, so the SessionStart drift probe mandates this skill every session forever. The
+  result now carries an explicit `attention` telling you to check the local file and stop looping.
+
+## [5.3.1] — 2026-07-27
+
+### Fixed
+- **Every skill that invokes a `.workflow.js` now normalizes it into the scratchpad first**
+  (`sed 's/\r$//'`) and passes that path — unconditionally, not as a fallback. Installed copies arrive
+  with CRLF even though the repo blob is LF and `.gitattributes` pins `*.js text eol=lf`; measured with
+  `file`: `mirror-sync/sync.workflow.js` CRLF in 5.1.0, 5.2.0 **and** 5.3.0, `build.workflow.js` CRLF in
+  5.2.0 but LF in 5.3.0 (different inodes per version, so no cache reuse — the install path converts).
+  `Workflow({scriptPath})` refuses such a file outright ("script contains control characters that would
+  be hidden in the approval dialog"), which blocked `/n8n-autopilot:mirror-sync` on a fresh 5.3.0
+  install. The normalized copy is byte-identical to the blob (`cmp` against `git show HEAD:<path>`).
+
+## [5.3.0] — 2026-07-27
+
+Pipeline triage + gate classification, from a session review where a stack EXTEND spent 83 subagents
+and 67 minutes without moving the critical path. Full analysis: [docs/PRD-5.3-pipeline-triage.md](docs/PRD-5.3-pipeline-triage.md)
+(issues #33–#40).
+
+### Fixed
+- **Class-B fix loop ignored its own author agent.** The fix call's return value was discarded, so a
+  `written:false` verdict ("not a wiring bug — the test payload carries placeholder ids") was
+  overridden and the same bytes were repushed and retested. Observed: 4 identical cycles, ~14 of 80
+  subagent results. The loop now breaks on that verdict and reclassifies the run as `test-data-gap`.
+- **A no-op edit is no longer a failure.** `edit.workflow.js` returns `{status:'success', noop:true}`
+  when the requested change is already present (comprehend refreshed to remote base, so local ==
+  remote) and skips validate/deploy/test. Previously each no-op returned `failed` and HALTed the whole
+  stack — 4 of them in one run.
+- **Self-inflicted drift.** The pipeline's own `workflow activate` changes the remote sync hash; the
+  resulting `MODIFIED_BOTH` blocked both push and pull and left `resolve --mode keep-current` (the
+  bypass the gate exists to prevent) as the only way out. Deployer now re-baselines with `fetch` for
+  this case only; documented in [docs/rules/gates.md](docs/rules/gates.md).
+- **Publish order is not a broken workflow.** n8n refuses to activate a caller whose callee is not
+  published. `build-stack-v2` grew an `Activate` phase that walks the graph deps-first; sub-builds run
+  with `deferActivation`/`deferTest`. The tester's "activation failure = broken workflow" rule now
+  checks the callee-unpublished cause first.
+
+- **Auto-capture never fired for long sessions.** `capture-feedback.sh` was wired to `SessionEnd`
+  only, which fires on a *clean* end (`clear` / `prompt_input_exit`). Sessions that get resumed or
+  left open — the ones with the most friction — produced nothing: measured gap 2026-07-01 to 07-27,
+  zero events across multi-hour n8nac sessions, while the Stop-gate kept working. Now also on
+  `PreCompact` and `SessionStart` (`source: resume`/`compact`), with the firing event recorded in
+  `endReason`; `startup`/`clear` are skipped (no prior transcript). Dedup stays last-write-wins per
+  session.
+- **Every captured event was versionless.** `n8nacVersion` read `<cwd>/node_modules/n8nac/package.json`,
+  which never exists under npx usage → `""` in all telemetry so far. It now falls back to the highest
+  n8nac version found in the npx cache (no spawn).
+
+### Added
+- `outcome: 'test-data-gap'` in the test schema + classification rules in `n8n-tester` (external 4xx
+  from synthetic input is not a wiring defect).
+- `noChangeNeeded` in the author contract — "nothing to do" is a first-class, non-failing answer.
+- `specPath` + `referenceStack` args for `build-stack-v2`, injected into architect/build/change
+  prompts, so the fan-out mirrors a proven twin instead of re-deriving contracts.
+- `status` vs **`proven`** split: `status:'success'` = build gates green, `proven:true` = a real
+  execution was inspected. `non-http` / `test-data-gap` / `deferred` are green builds with
+  `proven:false` — a stack is proven ONCE, end to end, not per sub-workflow with fake payloads.
+- `scripts/test-pipeline-gates.mjs` — runnable gate regression check (stubs the Workflow runtime, no
+  agents spawned). Fails against the pre-5.3.0 code.
+- Cheat-sheet recipe for `oAuth2Api` + `clientCredentials`, including the `allowedHttpRequestDomains`
+  enum trap (`"none"` breaks HTTP Request nodes at runtime) and the missing `credential update`.
+
+### Changed
+- `.gitattributes` also pins `*.mjs` to LF. The 5.3.0 install arrived as LF, but the cached 5.2.0
+  copy is CRLF — the pin is not a guarantee across install paths, so both v2 skills now document the
+  `file`-check plus the `sed 's/\r$//'`-into-scratchpad workaround for "script contains control
+  characters", instead of leaving it to be rediscovered mid-run.
+- Reference skill regenerated for **n8nac 2.5.0** (new: `env auth clear <name-or-id>`; `env auth`
+  help wording clarified). `REFERENCE_N8NAC_VERSION` → 2.5.0, minimum unchanged at 2.3.0.
+
 ## [5.2.1] — 2026-07-14
 
 ### Fixed

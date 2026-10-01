@@ -21,6 +21,12 @@ let d=""; process.stdin.on("data",c=>d+=c); process.stdin.on("end",()=>{
   try {
     const fs=require("fs"), path=require("path");
     const hook=JSON.parse(d);
+    // Also wired to PreCompact + SessionStart, because SessionEnd only fires on a CLEAN end
+    // (reason: clear / prompt_input_exit / other). Long sessions that get resumed or left open —
+    // exactly the ones with the most friction — never fired it: measured gap 2026-07-01..07-27
+    // with zero events despite multi-hour n8nac sessions. Skip the SessionStart flavors that
+    // carry no prior transcript (startup / clear); resume + compact DO carry one.
+    if (hook.source === "startup" || hook.source === "clear") process.exit(0);
     const cwd = hook.cwd || process.cwd();
     const tp  = hook.transcript_path || "";
     // Transcript missing/unreadable -> exit silently (cannot compute signals).
@@ -67,19 +73,40 @@ let d=""; process.stdin.on("data",c=>d+=c); process.stdin.on("end",()=>{
       if (m && m.length) signals[k] = m.length;   // omit zero-count classes
     }
 
-    // n8nac version — read locally (no spawn): consumer node_modules first, else "".
+    // n8nac version — read locally (no spawn): consumer node_modules first, then the npx cache.
+    // Everyone runs n8nac via npx, so node_modules never exists -> every event before 5.3.0
+    // carried n8nacVersion:"" (versionless telemetry). ponytail: scan the cache instead of
+    // spawning `n8nac --version` (~2s inside a fire-and-forget shutdown hook).
     let n8nacVersion="";
-    try {
-      const pj = path.join(cwd,"node_modules","n8nac","package.json");
-      if (fs.existsSync(pj)) n8nacVersion = JSON.parse(fs.readFileSync(pj,"utf8")).version || "";
-    } catch(e) {}
+    const readVer = (pj) => { try { return fs.existsSync(pj) ? (JSON.parse(fs.readFileSync(pj,"utf8")).version || "") : "" } catch(e) { return "" } };
+    n8nacVersion = readVer(path.join(cwd,"node_modules","n8nac","package.json"));
+    if (!n8nacVersion) {
+      const home = process.env.HOME || process.env.USERPROFILE || "";
+      const roots = [
+        process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA,"npm-cache","_npx") : "",
+        home ? path.join(home,".npm","_npx") : "",
+      ].filter(Boolean);
+      const newer = (a,b) => { const A=String(a).split("."), B=String(b).split(".");
+        for (let i=0;i<3;i++) { const x=+A[i]||0, y=+B[i]||0; if (x!==y) return x>y } return false };
+      for (const root of roots) {
+        try {
+          if (!fs.existsSync(root)) continue;
+          for (const dir of fs.readdirSync(root)) {
+            const v = readVer(path.join(root,dir,"node_modules","n8nac","package.json"));
+            if (v && (!n8nacVersion || newer(v,n8nacVersion))) n8nacVersion = v;
+          }
+        } catch(e) {}
+      }
+    }
 
     const rec = {
       kind: "event",
       schemaVersion: 1,
       sessionId: hook.session_id || "",
       ts: new Date().toISOString(),
-      endReason: hook.reason || "other",
+      // Which hook captured this: SessionEnd carries `reason`, SessionStart `source`,
+      // PreCompact `trigger`. Keeping it visible makes a capture-coverage gap measurable.
+      endReason: hook.reason || (hook.source ? `start:${hook.source}` : hook.trigger ? `precompact:${hook.trigger}` : "other"),
       n8nacVersion,
       repoLabel: path.basename(cwd),   // basename ONLY — no path leak
       signals,                          // {} if zero friction this session

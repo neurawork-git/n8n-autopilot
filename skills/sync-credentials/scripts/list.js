@@ -26,8 +26,27 @@ try {
     maxBuffer: 16 * 1024 * 1024
   }).toString();
 } catch (e) {
+  const out = `${(e && e.stderr) || ''}${(e && e.stdout) || ''}`;
   console.error('npx n8nac credential list --json failed.');
-  console.error('  Workspace bound? Run: npx n8nac workspace status --json');
+  // A 403 here is almost never a bad key: the same key reads, pushes and activates workflows fine.
+  // n8n checks the API key's own `scopes` column, with NO fallback to the user's global role — a
+  // `global:admin` still gets Forbidden if the key lacks `credential:list`. And n8n never backfills
+  // new scopes onto an existing key, so a key predating the scope simply cannot gain it. Saying
+  // "check your key" here sends people to re-paste a key that was correct all along.
+  if (/\b403\b|Forbidden/i.test(out)) {
+    console.error('');
+    console.error('  HTTP 403 — the API KEY LACKS THE CREDENTIAL SCOPE, it is not invalid.');
+    console.error('  n8n reads scopes from the key itself and never backfills new ones onto an existing');
+    console.error('  key, so a key created before the scope existed can never gain it — even for an admin.');
+    console.error('');
+    console.error('  Fix: create a NEW API key in the n8n UI with the credential scopes enabled, then');
+    console.error('       npx n8nac env auth set <env> --api-key-stdin');
+    console.error('');
+    console.error('  Meanwhile, to get a credential ID without this endpoint: open the credential in the');
+    console.error('  n8n UI — the ID is the last path segment of its URL (/home/credentials/<id>).');
+  } else {
+    console.error('  Workspace bound? Run: npx n8nac workspace status --json');
+  }
   process.exit(1);
 }
 

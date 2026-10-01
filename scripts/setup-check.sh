@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-REFERENCE_N8NAC_VERSION="2.4.0"
+REFERENCE_N8NAC_VERSION="2.7.0"
 MIN_N8NAC_VERSION="2.3.0"
 
 # n8n-autopilot 4.x is CLI-only — no MCP server is required or used. The
@@ -184,13 +184,16 @@ let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{
   fi
   if [ -n "$N8N_HOST" ]; then
     BASE_URL="${N8N_HOST%/}/api/v1"
-    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+    # Honour the same TLS escape hatch n8nac (Node) uses for internally issued certificates (#52):
+    # NODE_TLS_REJECT_UNAUTHORIZED=0 → curl -k, otherwise this probe contradicts a working CLI.
+    CURL_TLS=""; [ "${NODE_TLS_REJECT_UNAUTHORIZED:-1}" = "0" ] && CURL_TLS="-k"
+    HTTP_STATUS=$(curl -s $CURL_TLS -o /dev/null -w "%{http_code}" --max-time 5 \
       "${BASE_URL}/workflows?limit=1" 2>/dev/null || echo "000")
     if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "401" ]; then
       echo "OK: n8n API reachable at ${BASE_URL}"
     elif [ "$HTTP_STATUS" = "000" ]; then
       echo "ERROR: n8n instance not reachable at ${BASE_URL}."
-      echo "  Is n8n running?"
+      echo "  Is n8n running? Internally issued certificate → export NODE_TLS_REJECT_UNAUTHORIZED=0 (n8nac and this probe honour it)."
       ERRORS=$((ERRORS + 1))
     else
       echo "WARN: n8n API returned HTTP ${HTTP_STATUS} — verify host + API key in 'workspace status'."

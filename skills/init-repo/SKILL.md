@@ -12,7 +12,7 @@ Bootstrap a brand-new n8n workflow repo so the user can immediately start with `
 
 This skill is the **single entrypoint** for new-repo setup. Replaces the manual checklist.
 
-> **Reference n8nac version: 2.3.6** (minimum 2.3.0). The setup flow below targets the environment-centric model: environments are created with `n8nac env add`, authenticated with `n8nac env auth set`, and activated with `n8nac env use`. Workspace/instance config lives in user home (`~/n8nac-config.json` + `~/.n8n-manager/`), not in the workspace root. The old `workspace migrate-v1` command no longer exists — stray in-repo `n8nac-config.json` files must be deleted manually.
+> **Reference n8nac version: 2.7.0** (minimum 2.3.0). The setup flow below targets the environment-centric model: environments are created with `n8nac env add`, authenticated with `n8nac env auth set`, and pinned per repo via `N8NAC_ENVIRONMENT` in `.claude/settings.json` (never `env use` — the env-gate blocks it). Workspace/instance config lives in user home (`~/n8nac-config.json` + `~/.n8n-manager/`), not in the workspace root. An in-repo `n8nac-config.json` may be the LIVE config on n8nac ≥ 2.5 — never tell the user to delete it without checking ([docs/rules/setup.md](../../docs/rules/setup.md)).
 
 ## Arguments
 
@@ -27,6 +27,11 @@ This skill is the **single entrypoint** for new-repo setup. Replaces the manual 
 
 1. **Detect plugin self-bootstrap.** Refuse if target dir contains `.claude-plugin/plugin.json` with `"name": "n8n-autopilot"` — that's the plugin source, not a consumer repo.
 2. **Check tools.** `npx --version` and `git --version` must work. Fail loud if missing.
+2b. **Check for an existing remote of the same name (#53).** Before scaffolding into a directory
+   with no `origin`, ask GitHub whether the org already has it:
+   `gh repo view <org>/<dir-name> --json url,pushedAt 2>/dev/null`. If it exists, STOP and offer to
+   clone it (or `git remote add origin` + `git pull`) instead of creating an unrelated history — a
+   parallel bootstrap once hid a day of authoritative specs that already lived on the remote.
 3. **Detect legacy in-repo config.** If `<target>/n8nac-config.json` exists (legacy workspace-local config from n8nac < 2.2), warn the user that `workspace migrate-v1` no longer exists and the file must be **deleted manually** — config now lives in user home (`~/n8nac-config.json` + `~/.n8n-manager/`). Do not delete the file automatically.
 
 ## Steps
@@ -86,17 +91,46 @@ printf "%s" "$N8N_API_KEY" | npx n8nac env auth set <env-name> --api-key-stdin
 
 `<env-name>` is a short label for this environment (e.g. `Prod`, `CustomerX`). Use the same name throughout the session.
 
-### 5. Activate the environment + verify
+### 4b. Native n8n MCP for this environment (tests + push gate)
 
-```bash
-# Activate (all subsequent n8nac instance commands target this env)
-npx n8nac env use <env-name>
+The plugin's `n8n-native` MCP server and the push-lint gate reach the instance's own MCP server
+(`<host>/mcp-server/http`) with a token stored per environment. Without it, every push is blocked
+and no workflow can be tested. The token cannot be created by an agent:
 
-# Verify effective config
-npx n8nac workspace status --json
+1. Ask the user to enable MCP in the n8n UI (Settings → MCP) and create an access token.
+2. The user stores it in the customer's Infisical project (internal instances: `thecluster`), then
+   configures n8nac **in their own terminal** — `--token-stdin` reads a pipe and waits silently
+   without one:
+
+   ```powershell
+   $t = Read-Host "n8n MCP Token" -MaskInput; $t | npx n8nac native-mcp configure <env-name> --token-stdin --level 2
+   ```
+
+3. Verify: `N8NAC_ENVIRONMENT=<env-name> node "${CLAUDE_PLUGIN_ROOT}/scripts/check-native-mcp.mjs" --live`
+   must print `✅ native MCP ready`. The repo's `.claude/settings.json` must pin
+   `N8NAC_ENVIRONMENT=<env-name>` — `n8n-native` refuses to guess the instance otherwise.
+
+New and edited workflows need `settings.availableInMCP: true`; the push-lint gate enforces it.
+Contract and traps: `docs/rules/testing.md`.
+
+### 5. Pin the environment for this repo + verify
+
+**Never `npx n8nac env use`** — it rewrites the machine-global active env that every other session
+inherits, and the plugin's env-gate blocks it unconditionally (#49). A repo pins its env in
+`.claude/settings.json` instead, so every session opened in it (and every subagent) targets it:
+
+```json
+{ "env": { "N8NAC_ENVIRONMENT": "<env-name>" } }
 ```
 
-Status `ready` / `active` / `ok` = good.
+Write that file (merge into an existing one; keep it TRACKED in git — see the `.gitignore` note
+below) and verify with the session-aware command (not `workspace status`, which is env-blind):
+
+```bash
+N8NAC_ENVIRONMENT=<env-name> npx n8nac env status --json
+```
+
+`accessStatus: ok` + the expected host and project = good.
 
 If the user's n8n has multiple projects and the user did not specify one at `env add` time, update the environment:
 
@@ -164,6 +198,6 @@ Never delete files the user might have written between steps.
   outside the markers is preserved.
 - Steps 3–7 will re-run cleanly on a partially bootstrapped repo.
 - Templates live in `${CLAUDE_PLUGIN_ROOT}/skills/init-repo/assets/templates/` (colocated with the skill per skill-creator convention).
-- For multi-environment setups (one repo, many n8n tenants), run `npx n8nac env add <name>` per environment and `npx n8nac env use <name>` to switch.
+- For multi-environment setups (one repo, many n8n tenants), run `npx n8nac env add <name>` per environment and switch per session via `N8NAC_ENVIRONMENT=<name>` (settings `env` block, `export`, or `--env`) — never `env use`.
 - The legacy `init` / `init-auth` / `init-project` commands were removed in n8nac 2.2 — do NOT use them.
 - The `workspace pin-instance`, `workspace set-sync-folder`, `workspace set-project`, `workspace migrate`, and `workspace migrate-v1` commands were removed in n8nac 2.3 — do NOT use them.

@@ -1,9 +1,17 @@
 # Feedback Loop — capture + central feedback
 
-A `SessionEnd` hook (`scripts/capture-feedback.sh`) silently appends NON-PII friction signal counts
-(an anchored signal taxonomy) from each session to `.n8n-autopilot/feedback/events.ndjson` in the
-consumer repo (gitignored). A `SessionStart` probe (`scripts/check-feedback-pending.sh`) emits an
-`INFO:` nudge when unsynced records exist.
+`scripts/capture-feedback.sh` silently appends NON-PII friction signal counts (an anchored signal
+taxonomy) from each session to `.n8n-autopilot/feedback/events.ndjson` in the consumer repo
+(gitignored). A `SessionStart` probe (`scripts/check-feedback-pending.sh`) emits an `INFO:` nudge when
+unsynced records exist.
+
+**It runs on three events, not just `SessionEnd`** (since 5.3.0): `SessionEnd`, `PreCompact`, and
+`SessionStart` with `source: resume`/`compact` — the record's `endReason` says which one fired
+(`clear` / `precompact:auto` / `start:resume`). Reason: `SessionEnd` only fires on a *clean* end, so
+long sessions that get resumed or left open captured **nothing at all** — measured gap 2026-07-01 to
+07-27 with zero events despite multi-hour n8nac sessions. `source: startup`/`clear` is skipped (no
+prior transcript to scan). Writes are deduped last-write-wins per `sessionId`, so multiple fires in one
+session collapse into the newest (superset) count.
 
 - **The actionable unit is a typed `finding` record — one finding = one GitHub issue.** Schema:
   `type` (schema-gap | cli-friction | validation-loop | mcp-detour | credential-gap | doc-gap |

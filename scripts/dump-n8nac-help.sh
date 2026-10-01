@@ -52,7 +52,7 @@ emit_block() {
   echo ''
 }
 
-# Hard-coded parent allowlist (from n8nac 2.4.0 root --help).
+# Hard-coded parent allowlist (from n8nac 2.5.0 root --help).
 TOP_CMDS=(
   telemetry
   workspace

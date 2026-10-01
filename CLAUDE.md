@@ -3,7 +3,7 @@
 This repo uses the **n8n-autopilot plugin** for Claude Code.
 Workflows are TypeScript (Decorator format). **Never write n8n JSON by hand.**
 
-> **Reference n8nac version: 2.4.0** (minimum 2.3.0), v4-native environment-centric config model.
+> **Reference n8nac version: 2.7.0** (minimum 2.3.0), v4-native environment-centric config model.
 > SSOT = `REFERENCE_N8NAC_VERSION` in `scripts/setup-check.sh`. Setup + bump procedure: [docs/rules/setup.md](docs/rules/setup.md).
 
 ## Knowledge skills — read BEFORE inventing CLI surface
@@ -11,7 +11,7 @@ Workflows are TypeScript (Decorator format). **Never write n8n JSON by hand.**
 | Skill | When to read |
 |---|---|
 | [`n8nac-cheatsheet`](skills/n8nac-cheatsheet/SKILL.md) | Default first stop. "Which command for X?" — curated table, 60+ common operations across workspace, env, workflows, executions, credentials, recipes, schemas. |
-| [`n8nac-reference`](skills/n8nac-reference/SKILL.md) | Raw `n8nac --help` tree, 61 command/subcommand blocks. Source of truth for "does this command exist?" — **if not in `reference.md`, it does not exist.** |
+| [`n8nac-reference`](skills/n8nac-reference/SKILL.md) | Raw `n8nac --help` tree, 68 command/subcommand blocks. Source of truth for "does this command exist?" — **if not in `reference.md`, it does not exist.** |
 | [`n8n-architect`](https://github.com/EtienneLescot/n8n-as-code) (companion plugin) | Schema-First Research, workflow authoring rules, AI/LangChain patterns, Common Mistakes. Owned by Etienne's `n8n-as-code` plugin. |
 
 **Rule:** before running `npx n8nac <cmd> --help` interactively, `grep` the cheat-sheet, then the
@@ -43,7 +43,8 @@ the linked skill / command verbatim. If no row matches, ask the user — do not 
 | "pull schemas" / "update node schemas" | `/n8n-autopilot:pull-schemas` |
 | "check setup / MCP / instance health" | `/n8n-autopilot:check-mcps` |
 | "find a workflow by name" | `npx n8nac find <query> --json` (use `--remote` for instance-side, default = local+remote) |
-| "test schedule/manual/error-trigger workflow" / "non-HTTP test" | `/n8n-autopilot:test-manual <workflowId>` (resolves UI URL → waits for execution-id → inspects run) |
+| "test a workflow" (any trigger) | native n8n MCP, server `n8n-native`: pinned `prepare_test_pin_data` → `test_workflow` (no side effects, default); live `execute_workflow` manual only with real test data. Nothing is activated. Setup + contract: [docs/rules/testing.md](docs/rules/testing.md) |
+| "test by hand in the UI" (MCP server not registered) | `/n8n-autopilot:test-manual <workflowId>` (resolves UI URL → waits for execution-id → inspects run) |
 | "show executions of workflow <id>" | `npx n8nac execution list --workflow-id <id>` |
 | "inspect a specific execution" | `npx n8nac execution get <executionId> --include-data` |
 | "resolve workflow URL for UI" | `npx n8nac workflow present <id> --json` |
@@ -59,13 +60,29 @@ before any cred-touching operation (for the session *env*, use `env list --json`
 
 ## Hook Gates (enforced by `PreToolUse`)
 
-Two fail-closed gates protect against drift and cross-session env clobbering. One-line summary;
+Three fail-closed gates protect against drift, cross-session env clobbering and shipping a broken workflow. One
+`PreToolUse` entry (`matcher: Bash|PowerShell` → `scripts/pretooluse-gate.sh`, reads the hook's stdin JSON) runs
+them in order for BOTH shell tools. One-line summary;
 **full mechanism + bypass + reconciliation in [docs/rules/gates.md](docs/rules/gates.md).**
 
 - **Push-Gate** (`scripts/push-gate.sh`) — blocks `npx n8nac push` when remote status is
   `CONFLICT`/`MODIFIED_BOTH`/`DIVERGED`/`REMOTE_ONLY`, and always blocks `resolve --mode keep-*|local-wins`.
   Default fix: `pull` → re-edit → `push --verify`. Bypass only after explicit user OK to discard
   remote: `N8N_AUTOPILOT_ALLOW_LOCAL_WINS=1 <cmd>`.
+- **Push-Lint-Gate** (`scripts/push-lint-gate.sh`) — blocks `npx n8nac push` unless
+  (1) every node type + typeVersion exists on the RUNNING instance (`instance-node-check.mjs` → the
+  instance's MCP `get_node_types`; n8nac's own preflight falls back to its bundled catalogue),
+  (2) every top-level parameter exists for the node's typeVersion (`param-version-check.py` reads the
+  `@version` gates from `node-info`; n8n ignores a key of another version silently) and
+  (3) the compiled JSON passes the deterministic lint (`lint-workflow.py`): an error strategy on every
+  top-level workflow with external calls (`settings.errorWorkflow` or a wired error output),
+  `continueOnFail` only with a downstream `$json.error` check, no unwired error output, no orphan /
+  dead-trigger nodes, balanced expressions, no 0-node compile, `availableInMCP: true`. In the build
+  pipelines a lint block is a fix loop (author → validate → repush, max 3). Bypass only after explicit
+  user OK: `N8N_AUTOPILOT_SKIP_LINT=1 <cmd>`.
+- **`n8n-native` (plugin MCP server) is test/read-only** and always targets the instance of the
+  pinned session env — setup per env: `npx n8nac native-mcp configure <env> --token-stdin --level 2`
+  ([docs/rules/testing.md](docs/rules/testing.md)). Workflows change via `.workflow.ts` + push.
 - **Env-Gate** (`scripts/enforce-env.sh`) — one env per session. Blocks any instance-touching
   command with no explicit env (`export N8NAC_ENVIRONMENT=<env>` / inline / `--env`), and blocks
   `env use`/`env pin` unconditionally (they mutate the shared GLOBAL active env). Pin via
@@ -94,11 +111,50 @@ Hard rule: parse the literal slash-command after `AUTOPILOT_ACTION_REQUIRED:` an
 paraphrase, do not skip the `--packages` list, do not bundle multiple signals into one call — run
 each line as written.
 
+**Probe/action symmetry (rule for writing probes).** Because that signal is mandatory, a probe may only
+emit it when the named action can actually resolve the condition — the probe must test *what the action
+fixes*, not a proxy for it. Two probes violated this and fired every session into a guaranteed no-op
+(5.3.3): the credential probe matched on ID while the fixer joins on name, and the mirror probe trusted
+`n8nac list`'s status without checking whether the file was already on disk. When the condition is real
+but not auto-fixable, print `INFO:` with the manual remedy instead. Guarded by
+`bash scripts/test-probe-symmetry.sh`.
+
 Signals NOT auto-triggered (informational only — surface to user, do not auto-run):
+- `check-instance-cache.sh` (`INFO:` — `.n8n-autopilot/instance-cache.json` missing, older than 24 h, or
+  built for a different env. Rebuilding hits the instance twice and takes ~30 s, past the hook budget;
+  the build skills refresh it themselves before dispatching. See *Instance cache* below).
 - `check-inventory-freshness.sh` (`INFO:` — inventory regeneration is expensive).
 - `check-feedback-pending.sh` (`INFO:` — unsynced feedback exists; offer `/n8n-autopilot:feedback`, needs consent).
 - `check-plugin-version.sh` (`INFO:` — installed plugin is behind the latest release; gotcha/env-gate hooks may be missing. Tell the user to run `claude plugin update n8n-autopilot` — env-changing, their call, never auto-run).
-- `check-workspace-migration.sh` — stray in-repo `./n8nac-config.json`; no migration command exists, ask user to delete it manually ([docs/rules/setup.md](docs/rules/setup.md)).
+- `check-custom-nodes-resolution.sh` (`INFO:` — workflows use community node packages but n8nac has no custom-node source loaded, so `skills search`/`node-info` return **empty instead of erroring** for those types. Treat an empty research result for a listed package as a resolution failure, not as "the node does not exist". `pull-schemas` does NOT fix it — different mechanism; the remedy is `n8nac-custom-nodes.json` / `env update --custom-nodes-path`, which the plugin cannot author for you).
+- `check-workspace-migration.sh` — in-repo `./n8nac-config.json`. **Never tell the user to delete it:** n8nac 2.5.0 reads an in-repo config, and with no home config present it is the live one (deleting it destroys every env binding). The probe reports *live* vs *superseded* and stays silent when it is simply live ([docs/rules/setup.md](docs/rules/setup.md)).
+
+## Instance cache — the agents' view of what already runs here
+
+`bash scripts/build-instance-cache.sh` writes two files (both gitignored, both instance-specific):
+
+| File | For | Rule |
+|---|---|---|
+| `.n8n-autopilot/instance-brief.md` (~7 KB) | reading whole | node types proven on ACTIVE workflows + active workflows as candidate references |
+| `.n8n-autopilot/instance-cache.json` (~80 KB at 78 workflows) | grepping | per-workflow detail: file, trigger, `nodeTypes`, `credentialNames`; plus `credentials[]`, `customNodes[]` |
+
+**Why it exists.** `schemas/` holds n8nac's own node knowledge — instance-*independent*, and read by no
+agent. `docs/INVENTORY.md` is prose for humans. `.n8n-state.json` holds a sync hash. So nothing on disk
+described the instance, and the research phase went looking for prior art in the public 7.7k-template
+corpus while 78 working workflows sat next door. `n8nac skills node-info` reports every version n8n ever
+shipped (`switch` → `[1,2,3,3.1,3.2,3.3,3.4]`) and knows nothing about the target — *exists* and *exists
+here* are different claims, and only the second survives a push.
+
+**Consumers:** `n8n-researcher` (mandatory local-prior-art step before the template lookup, returns
+`referenceWorkflow`) · `n8n-node-verifier` (`provenOnInstance`) · `n8n-author` (reads the prior-art file;
+takes credential ids from `credentials[]` instead of inventing them) · `n8n-stack-architect` (reuses
+existing workflows as callees instead of rebuilding them). Refreshed by the build skills before dispatch.
+
+**typeVersion ground truth = the instance, at push time.** The cache holds no `typeVersion` (`pull`
+drops it, `list --json` never had it), and the bundled n8nac catalogue is stamped for a fixed n8n
+version (2.4.1 → n8n 2.38.7) that customer instances do not run. The authority is the instance's own MCP
+`get_node_types`, which the push-lint gate queries for every type@version before a push
+([docs/rules/testing.md](docs/rules/testing.md)).
 
 ## Entry Point & Deploy
 
@@ -113,13 +169,20 @@ command catalogue (PRIMARY + Operations + workflow design-quality rules) lives i
 **[docs/reference/n8nac-commands.md](docs/reference/n8nac-commands.md)** — backed by the
 `n8nac-cheatsheet` / `n8nac-reference` skills (the SSOT). Quick reference: [docs/OVERVIEW.md](docs/OVERVIEW.md).
 
+**Auth failures that are not what they look like** — a `403` on one endpoint while the same key works
+everywhere else means the API KEY LACKS THAT SCOPE (n8n has no fallback to the user's global role, and
+never backfills scopes onto an existing key — re-pasting it cannot help); `env auth` is stored per
+ENVIRONMENT, not per instance target, so environments sharing a target each need their own
+`env auth set`. Both, plus how to get an activation failure's real cause out of n8n:
+**[docs/troubleshooting/auth-and-scopes.md](docs/troubleshooting/auth-and-scopes.md)**.
+
 Three lifecycle steps n8nac **cannot** automate (full procedures in
 [docs/troubleshooting/manual-detours.md](docs/troubleshooting/manual-detours.md)):
 - **MCP publish** — workflows with `mcpTrigger` need a manual "Publish" click in the n8n UI after every push.
-- **Non-HTTP testing** — `schedule`/`manual`/`errorTrigger` can't be fired by `n8nac test`; use `/n8n-autopilot:test-manual <id>`.
+- **Testing** is no longer a manual detour: every trigger type runs headless via native MCP pin-data tests ([docs/rules/testing.md](docs/rules/testing.md)); `/n8n-autopilot:test-manual <id>` stays for hand-driven UI runs.
 - **DataTable CRUD** — no `datatable` subcommand; use the `/n8n-autopilot:data-tables` skill (curl carve-out for `/api/v1/data-tables` only).
 
-**Feedback loop** — SessionEnd auto-captures non-PII friction signals locally; `/n8n-autopilot:feedback`
+**Feedback loop** — SessionEnd / PreCompact / resume auto-capture non-PII friction signals locally; `/n8n-autopilot:feedback`
 review distills them into typed `finding` records and consent-gated POSTs them to the ingest webhook
 (no gh needed) → **one public GitHub issue per finding** (incl. reporter = OS username);
 maintainer-side `feedback-triage` agent dedups/ranks the open issues.
@@ -131,7 +194,9 @@ Detail: [docs/rules/feedback-loop.md](docs/rules/feedback-loop.md).
 - Never write workflow JSON by hand — always Decorator-TS format.
 - **Never ask the user to activate/publish a workflow in the n8n UI.** A failing
   `npx n8nac workflow activate <id>` means the WORKFLOW IS BROKEN (node issues — most often an
-  external-service node without a `credentials:` block). Diagnose + fix + re-push + re-activate;
+  external-service node without a `credentials:` block) — **except when the error names a referenced
+  sub-workflow**: then the cause is publish ORDER (callees must be published/active before the caller,
+  bottom-up), not a defect. Fix the order, do not "fix" the file. Diagnose + fix + re-push + re-activate;
   cross-check the instance with a known-good trivial workflow if unsure. UI-activation requests are
   a bug, not a workaround. (Only exception: `mcpTrigger` publish — a documented n8n API gap.)
 - **Archived workflows are read-only** — `push` is rejected; unarchive (n8n UI) or recreate, no code-fix loop.

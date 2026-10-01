@@ -42,9 +42,21 @@ const A = (typeof args === 'string') ? (() => { try { return JSON.parse(args) } 
 // run from a session with a different N8NAC_ENVIRONMENT.
 const ENV = `Run every \`npx n8nac\` command BARE (e.g. \`npx n8nac list --json\`). The target environment is ALREADY set via the inherited N8NAC_ENVIRONMENT session variable — bare commands hit the correct instance+project. Do NOT add a \`--env\` flag. Do NOT run \`npx n8nac env list\`. Do NOT probe \`default\`/other environments. Just run the bare command and trust the inherited env. `
 
+// safe(): a schema'd subagent that ends WITHOUT calling StructuredOutput makes the whole run abort
+// with an opaque error — observed: all 4 pulls succeeded, then a dropped Verify tool-call killed the
+// run and reported `failed`. One retry, then a graceful fallback into the normal result shape.
+async function safe(prompt, opts, fallback) {
+  for (let i = 1; i <= 2; i++) {
+    try { const r = await agent(prompt, opts); if (r != null) return r } catch (e) { log(`agent(${opts.phase || '?'}) attempt ${i}/2 failed: ${String((e && e.message) || e).slice(0, 140)}`) }
+  }
+  log(`agent(${opts.phase || '?'}) produced no output after 2 attempts -> graceful fallback`)
+  return fallback
+}
+
 // ===== PHASE 1 — DISCOVER =====
 phase('Discover')
-const disc = await agent(`${ENV}Discover remote-only workflows (workflows on the instance with no local file).`, { agentType: 'n8n-autopilot:n8n-mirror', schema: DISCOVER_SCHEMA, phase: 'Discover' })
+const disc = await safe(`${ENV}Discover remote-only workflows (workflows on the instance with no local file).`, { agentType: 'n8n-autopilot:n8n-mirror', schema: DISCOVER_SCHEMA, phase: 'Discover' }, null)
+if (!disc) return { status: 'failed', stage: 'discover', error: 'mirror agent produced no remote-only list after retries' }
 log(`Remote total=${disc.totalRemote} | already local=${disc.alreadyLocal} | remote-only=${disc.remoteOnly.length}`)
 
 if (disc.remoteOnly.length === 0) {
@@ -79,13 +91,24 @@ if (failed.length) log(`WARNING ${failed.length} pull(s) failed: ${failed.map((f
 
 // ===== PHASE 3 — VERIFY =====
 phase('Verify')
-const ver = await agent(`${ENV}Re-run Discover: how many remote-only workflows remain after the pulls?`, { agentType: 'n8n-autopilot:n8n-mirror', schema: VERIFY_SCHEMA, phase: 'Verify' })
+const ver = await safe(`${ENV}Re-run Discover: how many remote-only workflows remain after the pulls?`, { agentType: 'n8n-autopilot:n8n-mirror', schema: VERIFY_SCHEMA, phase: 'Verify' }, null)
+// An inconclusive verify must NOT discard the pulls that already landed.
+const remaining = ver ? ver.remoteOnlyRemaining : null
 
 return {
-  status: failed.length === 0 && ver.remoteOnlyRemaining === 0 ? 'success' : 'partial',
+  status: failed.length === 0 && remaining === 0 ? 'success' : 'partial',
   pulled: ok.length,
   failed: failed.map((f) => ({ id: f.id, error: f.error })),
-  remoteOnlyRemaining: ver.remoteOnlyRemaining,
-  mirrorComplete: ver.remoteOnlyRemaining === 0,
+  remoteOnlyRemaining: remaining,
+  mirrorComplete: remaining === 0,
   files: ok.map((r) => r.filePath).filter(Boolean),
+  // A pull can write the file and still leave the workflow reported as remote-only: n8nac only
+  // refreshes an existing state entry when it is NEW (measured — pre-existing stale entries keep
+  // their old lastSyncedHash/lastSyncedAt even after a serial re-pull). Say so instead of letting
+  // the SessionStart drift probe mandate this skill forever.
+  attention: remaining === null
+    ? `Verify inconclusive (agent produced no result). ${ok.length} pull(s) DID land — check with \`npx n8nac list --json\` before re-running.`
+    : remaining > 0 && failed.length === 0
+      ? `${remaining} workflow(s) still report remote-only although every pull succeeded. Check whether the file exists locally: if it does, n8nac did not refresh its state entry (upstream) and re-running this skill will not converge — do not loop on it.`
+      : '',
 }

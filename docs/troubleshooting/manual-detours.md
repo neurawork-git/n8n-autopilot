@@ -23,6 +23,10 @@ a prominent hint instead of auto re-publishing.
 
 ## Non-HTTP-Trigger Testing — MANUAL
 
+> **Automated since 5.4.0.** Every trigger type runs headless through the native n8n MCP
+> (pinned `test_workflow`) — [docs/rules/testing.md](../rules/testing.md). What follows applies only
+> when the `n8n-native` MCP server is not registered.
+
 `npx n8nac test` can only fire Webhook / Chat / Form triggers. For `schedule`, `manual`,
 `errorTrigger`:
 

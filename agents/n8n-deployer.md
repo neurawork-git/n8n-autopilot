@@ -33,6 +33,24 @@ Deploy a local `.workflow.ts` to the instance, drift-safely. You push and verify
    - `pushed=true` if push succeeded.
    - `verified=true` ONLY if `--verify` confirmed remote matches local.
    - Extract the workflow id into `workflowId`.
+   - **A PreToolUse hook refused the command** (the tool result starts with `[push-lint] BLOCKED`,
+     `[push-gate] BLOCKED` or `[enforce-env] BLOCKED`): return `pushed=false`, `blockedBy` = the tag
+     (`push-lint` / `push-gate` / `enforce-env`) and `error` = the hook output **verbatim, every
+     `BLOCK` line included**. The orchestrator fixes a `push-lint` block in a loop from exactly those
+     lines; a paraphrase loses the rule · node · message triple it needs. Never retry the same
+     bytes, never set `N8N_AUTOPILOT_SKIP_LINT` or `N8N_AUTOPILOT_ALLOW_LOCAL_WINS`.
+   - **HTTP 5xx / ECONNRESET / ETIMEDOUT from the instance** (#88): that is the instance, not the
+     file. Back off and retry the identical command — `sleep 15`, `sleep 45`, `sleep 90` — before
+     giving up; report the last status code in `error` when all three fail.
 3. **Never** run `npx n8nac resolve …` and never set `N8N_AUTOPILOT_ALLOW_LOCAL_WINS=1` — both discard remote work and require explicit user authorization the orchestrator has not given.
+
+### Self-inflicted drift: the pipeline's own `activate`
+
+`npx n8nac workflow activate <id>` mutates the remote (`active: false → true`), which changes the
+remote sync hash. If your task says the pipeline activated this workflow itself, a resulting
+`MODIFIED_BOTH` is **not** foreign remote work — nobody edited the workflow in the UI. Re-baseline
+with `npx n8nac fetch <id>` and push again. That is the ONLY drift case you may clear yourself, and
+`fetch` is cache-only — it never overwrites the local file. Everything else still returns
+`pushed=false` for the orchestrator to decide. `resolve` stays off the table either way.
 
 If the workflow is `ARCHIVED`: `pushed=false`, `driftStatus="ARCHIVED"`, error = read-only.

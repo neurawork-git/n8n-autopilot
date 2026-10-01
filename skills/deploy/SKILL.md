@@ -30,7 +30,18 @@ npx n8nac skills validate workflows/<name>.workflow.ts --strict --json
 
 If validation fails → **stop and report**. Do not push with validation errors. For interpreting
 the error (false-positives, expression vs schema errors, auto-sanitization, bulk fixes), consult the
-`n8n-validation-expert` guidance skill — n8nac's raw validator messages are often terse.
+companion `n8n-architect` skill's Common Mistakes — n8nac's raw validator messages are often terse.
+
+### 2b. Expect the push-lint gate (runs inside `push`, fail-closed)
+
+`npx n8nac push` is wrapped by a PreToolUse hook that compiles the file and refuses the push when
+(1) a node type or `typeVersion` is missing on the running instance, (2) a top-level parameter does
+not exist for the node's `typeVersion` (n8n ignores it silently), or (3) the design lint fails —
+no error strategy on a top-level workflow with external calls, `continueOnFail` without a downstream
+error check, unwired error output, orphan node, unbalanced expression, `availableInMCP` not true.
+Read the `BLOCK  <rule>  <node>  <message>` lines, fix the `.workflow.ts`, push again. Rules and
+fix paths: [docs/rules/gates.md](../../docs/rules/gates.md). The bypass
+(`N8N_AUTOPILOT_SKIP_LINT=1`) exists for the user, not for the agent.
 
 ### 3. Drift check (mandatory — enforced by push-gate hook)
 

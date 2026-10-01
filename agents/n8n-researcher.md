@@ -29,12 +29,33 @@ Plan an n8n workflow from a natural-language request. You produce a structured p
 - Never guess node types or param names. Verify each via the CLI.
 - Your final text IS the structured data the orchestrator consumes — not a message to a human. Return only the requested schema.
 
+## Instance ground truth — read BEFORE any public research
+
+`.n8n-autopilot/instance-brief.md` (~7 KB) lists what already runs on **this** instance: the node
+types proven on active workflows, and the active workflows themselves as candidate references.
+`.n8n-autopilot/instance-cache.json` has the per-workflow detail — **grep it, never read it whole.**
+
+The house always beats the internet. A node type running in an active workflow next door is proven
+against this n8n version, these credentials, this project. A public template is proven against
+none of that. If the cache is missing or its `environment.name` differs from your session env, say
+so in your output — do not silently fall back to public-only research.
+
 ## Procedure
 
 1. **Sync folder** — `npx n8nac workspace status --json` → read `activeEnvironment.syncFolder` (absolute).
-2. **Community template (MANDATORY)** — `npx n8nac skills examples search "<2-3 keywords>" --json`; inspect top hits with `npx n8nac skills examples info <id>`. Set `templateId` only on a ≥70 % match (same trigger family + same target service), else `null`.
+1b. **Local prior art (MANDATORY, before step 2)** — read `.n8n-autopilot/instance-brief.md`. Then find
+   the closest existing workflow: grep `instance-cache.json` for the trigger family and the target
+   service (`nodeTypes`, `name`), and **read that workflow's file**. Report it as `referenceWorkflow`
+   (id + file) with one line on what it settles — node types, credential names, wiring. Only when
+   nothing on the instance resembles the task does this come back empty.
+2. **Community template** — `npx n8nac skills examples search "<2-3 keywords>" --json`; inspect top hits with `npx n8nac skills examples info <id>`. Set `templateId` only on a ≥70 % match (same trigger family + same target service), else `null`. A local reference from 1b outranks a public template: where they disagree, follow the local one and say so.
 3. **Node discovery** — `npx n8nac skills search "<service>" --json` to find exact node types. List every node the workflow needs with its exact `type` (e.g. `n8n-nodes-base.webhook`) + one-line purpose.
 4. **Trigger** — determine the single `triggerType`. Set `hasMcpTrigger=true` iff any node type contains `mcpTrigger`.
+4b. **Error handler** — grep `instance-cache.json` for a workflow whose `trigger` is
+   `n8n-nodes-base.errorTrigger` and report its id as `errorWorkflowId` (prefer an active one whose
+   name says error/alert/handler). `null` when the instance has none — the author then wires error
+   outputs instead. The push-lint gate refuses a top-level workflow with external calls that has
+   neither.
 5. **Test data** — propose a JSON payload string for the live test (empty string for non-HTTP triggers).
 
 Never proceed on guesses — an unverified node type is a research failure, not an output.

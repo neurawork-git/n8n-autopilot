@@ -7,8 +7,9 @@ model: sonnet
 maxTurns: 10
 color: orange
 skills:
-  - n8n-validation-expert
-  - n8n-workflow-patterns
+  - n8n-architect
+  - n8n-orchestration-patterns
+  - n8n-code-javascript
 ---
 
 # Workflow Reviewer
@@ -31,7 +32,7 @@ Review `.workflow.ts` files for correctness, best practices, and common mistakes
 6. **Links defined** — Is there a `@links()` method defining all connections via `.out().to()` chains?
 7. **AI connections** — Are AI sub-nodes wired via `.uses()` in the `@links()` method, not via `.out().to()`?
 8. **Credentials** — Are credential objects inline with `{ id: "...", name: "..." }` format? No hardcoded env vars.
-9. **typeVersion** — Is the highest available `typeVersion` used for each node?
+9. **typeVersion** — not yours to judge from the ontology: the bundled node catalogue is stamped for a different n8n version than the instance runs. The push-lint gate checks every type@version against the running instance (`get_node_types`). Do not flag "not the highest version".
 10. **Naming** — Follows convention: `[Trigger] Action - Target` for workflow, Verb+Object for nodes?
 
 ### Design quality (11–15) — distilled from real production-run analysis
@@ -41,6 +42,19 @@ Review `.workflow.ts` files for correctness, best practices, and common mistakes
 13. **Memory / large data** — Does a Code node load or iterate a large dataset (esp. DB result sets, binary, file contents)? Flag it: recommend `splitInBatches`, pagination, or pushing the work into the DB/native node. (Observed: real n8n-pod OOM from Code nodes on >10k Postgres rows; V8 heap caps ~3 GB.)
 14. **Descriptions present** — Does `@workflow({...})` set a `description`? Do non-obvious nodes carry a `notes`/sticky explanation? Missing descriptions hurt discoverability in `n8nac list` + the n8n UI.
 15. **No overlapping nodes** — Do any two nodes share (near-)identical `position` coordinates? Overlapping nodes are unreadable in the n8n canvas. Flag pairs whose `[x,y]` differ by < ~80px on both axes.
+
+### Error handling & data flow (16–20) — what the push-lint gate cannot see in the source
+
+The gate (`scripts/lint-workflow.py`) decides the mechanical part on the compiled JSON: a top-level
+workflow with external calls must carry `settings.errorWorkflow` or a wired error output;
+`continueOnFail`/`continueRegularOutput` must feed an If/Switch/Filter that tests `$json.error`;
+`httpRequest` without `retryOnFail` warns. Do not re-flag those. Review the judgement calls:
+
+16. **Error strategy fits the workflow** — Is the error branch doing something useful (notify, `stopAndError` with a message, mark the queue item failed), not just ending? Does a retried `httpRequest` retry something idempotent (a GET/PUT), never a non-idempotent POST that would duplicate side effects?
+17. **Explicit node references across gaps (#64)** — A node that consumes a PRODUCER several nodes upstream must use `$('Producer').item.json.x` (or `.first()`), not `$json.x`. `$json` is the immediate predecessor: inserting one node later silently empties every field. Flag `$json` reads whose intended source is not the direct predecessor.
+18. **Sentinels reach a condition before a URL (#75)** — A Code/Set node that emits an empty string / `null` meaning "not found" must hit an If before any node interpolates it into a URL path, id field or query. Otherwise the remote answers 404 and the intended fallback branch never runs.
+19. **Silent-success API writes (#96)** — For writes to APIs that accept unknown keys with 200 (Close CRM custom fields need the `custom.` prefix; GitHub drops labels without push rights), does a following node read the value back or check the response body? "200 and green" is not proof the field was written.
+20. **Code node runtime access (#97)** — `$env.*`, `require(...)`, `import(...)` in a Code node run only on instances that allow them (`N8N_BLOCK_ENV_ACCESS_IN_NODE`, `NODE_FUNCTION_ALLOW_BUILTIN`). Prefer credentials on a native node (HMAC checks → the Crypto node); if Code must do it, the sticky note names the instance setting it depends on.
 
 ## File Structure Check
 
@@ -76,7 +90,7 @@ export class MyWorkflow {
 | Missing respond | Webhook without Respond node | Add `respondToWebhook` node + link |
 | Wrong param | `meetingId` vs `transcriptId` | Check via n8nac `get_n8n_node_info("node.type")` |
 | Bad AI wiring | AI sub-nodes via `.out().to()` | Use `.uses()` in `@links()` instead |
-| Wrong typeVersion | Using version 1 when 3 is latest | Check schema via n8nac, use highest version |
+| Wrong typeVersion | Blocked by the push-lint gate (instance lacks it) | Use a version the instance lists |
 | Missing @links | No `@links()` method | Add `@links()` method with all connections |
 | Inline credentials wrong | `credentials: "openAiApi"` | Use `{ id: "...", name: "..." }` object |
 
@@ -114,10 +128,10 @@ npx n8nac skills validate <workflow>.workflow.ts
 ### Issues (must fix)
 - [ ] Line 12: Missing sticky note — add @node with type n8n-nodes-base.stickyNote
 - [ ] Line 45: AI sub-node OpenAiModel wired via .out().to() — use .uses() in @links()
-- [ ] Line 28: typeVersion 1 used for set node, latest is 3.4
+- [ ] Line 60: `$json.leadId` read in "Update CRM" but the producer "Lookup Lead" is three nodes upstream — use `$('Lookup Lead').item.json.leadId`
 
 ### Warnings
-- [ ] Line 18: HTTP Request has no onError configured
+- [ ] Line 18: HTTP Request retries a POST — duplicate side effects on retry; retry only the GET before it
 - [ ] Missing authentication parameter on Slack node — check if OAuth2 or access token
 
 ### OK

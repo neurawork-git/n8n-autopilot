@@ -48,6 +48,13 @@ Execute Workflow node needs the child's real `workflowId`. A failed child **halt
      stack that already covers the use-case. On a match it returns `status: 'needs-decision'` instead
      of rebuilding — relay the `hint` (re-run as EXTEND with the change, or pass `mode: 'greenfield'`
      to force a fresh build). This stops the silent rebuild-over-a-working-stack case.
+1b. **Refresh the instance cache.** A stack decomposition that cannot see the instance will rebuild
+   jobs that already run there:
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/build-instance-cache.sh"
+   ```
+   Writes `.n8n-autopilot/instance-cache.json` + `instance-brief.md`; the architect reuses existing
+   workflows as callees from it. **If it fails, report that before starting** — do not plan blind.
 2. **Resolve the three sub-script paths.** They are siblings of this skill inside the plugin install:
    - `buildScript` = `<plugin>/skills/build-workflow-v2/build.workflow.js`
    - `editScript`  = `<plugin>/skills/build-workflow-v2/edit.workflow.js`
@@ -55,6 +62,13 @@ Execute Workflow node needs the child's real `workflowId`. A failed child **halt
 
    Resolve `<plugin>` as the absolute parent of *this* skill dir (`build-stack-v2`). The script has no
    `fs`/`__dirname`, so these MUST be passed in as args — that is by design.
+
+   > **Windows / CRLF — do this unconditionally:** normalize all three scripts into the scratchpad
+   > (`sed 's/\r$//' <src> > <scratchpad>/<name>`) and pass the scratchpad paths (including as
+   > `buildScript` / `editScript` / `syncScript`). Installed copies arrive with CRLF despite the LF pin
+   > in `.gitattributes`, and `Workflow({scriptPath})` then refuses them with "script contains control
+   > characters". It is *sporadic* — `sync.workflow.js` was CRLF in 5.3.0/5.3.1 and LF in 5.3.2 — so a
+   > version that happened to work is no reason to skip this. Never hand-edit the plugin cache.
 3. **Invoke `stack.workflow.js` via the `Workflow` tool** (`scriptPath` = absolute path to it; it runs in
    the consumer-repo cwd so `npx n8nac workspace status` resolves the pinned project + sync folder):
 
@@ -64,7 +78,9 @@ Execute Workflow node needs the child's real `workflowId`. A failed child **halt
      scriptPath: "<plugin>/skills/build-stack-v2/stack.workflow.js",
      args: {
        description: "<full end-to-end use-case / PRP>",
-       buildScript: "<plugin>/skills/build-workflow-v2/build.workflow.js"
+       buildScript: "<plugin>/skills/build-workflow-v2/build.workflow.js",
+       specPath: "<path to the authoritative spec, if one exists in the repo>",
+       referenceStack: "<folder/glob of a PROVEN twin stack, if one exists>"
      }
    })
    ```
@@ -78,23 +94,53 @@ Execute Workflow node needs the child's real `workflowId`. A failed child **halt
        change: "<what to change>",
        buildScript: "<plugin>/skills/build-workflow-v2/build.workflow.js",
        editScript: "<plugin>/skills/build-workflow-v2/edit.workflow.js",
-       syncScript: "<plugin>/skills/mirror-sync/sync.workflow.js"
+       syncScript: "<plugin>/skills/mirror-sync/sync.workflow.js",
+       specPath: "<authoritative spec>",
+       referenceStack: "<proven twin>",
+       activate: false
      }
    })
    ```
+   **`specPath` / `referenceStack` are not optional garnish** — pass them whenever the repo has them.
+   Without the spec the fan-out re-derives requirements from prose (observed: a real requirement
+   argued away because a sibling stack lacked it); without the reference twin every sub-agent
+   re-researches node contracts instead of mirroring a pattern that already runs in production.
+
+   **`activate`** — greenfield defaults to `true` (a new stack is useless inactive); extend defaults to
+   `false` because an existing stack's active/inactive state is a deliberate operational choice. Pass
+   `activate: true` on extend when the change is supposed to go live now.
 4. Render the **Completion Report** from the returned object. Watch live progress with `/workflows`.
+   `status: 'success'` means **built + deployed**, not proven: sub-workflows report `proven: false`
+   because the stack no longer live-tests each one with synthetic data. Prove the stack ONCE, end to
+   end, against the entry trigger with real input — that single run is the acceptance criterion.
 
 ## Phases
 
+**Preflight** (both modes, runs first): resolves and logs the target env + project before anything is
+created. A stack run rewires a whole project, so pointing it at the wrong one is the most expensive
+mistake available here — and it used to be silent. `enforce-env.sh` refuses un-pinned instance commands,
+but only once a build agent already runs, by which point the abort reads as an unrelated tool error.
+The resolved target is logged up front and returned as `envContext` in every report. A missing
+per-session `N8NAC_ENVIRONMENT` is called out explicitly: the run would otherwise follow the SHARED
+global active env, which another session can change mid-run.
+
 **Greenfield** (`stack.workflow.js`): Plan (`n8n-stack-architect` decompose → `stackPlan`) → Document
 (`docs/<stack>.architecture.md` — contracts + mermaid, composed deterministically in JS) → Build
-(topological bottom-up, one `build.workflow.js` hop per sub-WF, children's real ids fed to parents) →
+(topological bottom-up, one `build.workflow.js` hop per sub-WF with `deferActivation`, children's real
+ids fed to parents) → **Activate** (deps-first: callees before callers — n8n refuses to activate a
+caller whose callee is not published, so per-sub-workflow activation would fail on order alone) →
 Report (re-write the doc with real `workflowId`s).
 
 **Extend** (`stack.workflow.js`): Mirror (`mirror-sync` so the local call-graph is complete) →
 Comprehend (`n8n-stack-comprehender` reconstructs the DAG from `executeWorkflow` refs) → Plan
 (`n8n-stack-architect` delta) → Build (new sub-WFs bottom-up via `build.workflow.js`, then changed
-sub-WFs / orchestrator rewiring via `edit.workflow.js`) → Report (update the doc).
+sub-WFs / orchestrator rewiring via `edit.workflow.js` with `deferTest`) → Activate (only with
+`activate: true`) → Report (update the doc).
+
+> **A change that is already present is a no-op, not a failure.** `edit.workflow.js` returns
+> `{ status: 'success', noop: true }` and skips deploy/test when the author finds the change already in
+> the file (comprehend refreshed it to remote base, so local == remote). They appear in the result's
+> `noops[]`. Treating those as failures used to HALT the whole stack — four in one observed run.
 
 > **Local-mirror invariant (EXTEND).** The call-graph is reconstructed from *code*, not memory — so the
 > repo must mirror the instance first. `stack.workflow.js` runs `mirror-sync` as phase 0; if a referenced
@@ -107,6 +153,11 @@ The script returns one of:
 - `{ status: 'needs-decision', reason: 'existing-stack', stackSlug, entryWorkflowId, detail, hint }` —
   greenfield was requested but a matching stack already exists locally. Relay the `hint` verbatim; do
   NOT rebuild. Re-run as EXTEND, or pass `mode: 'greenfield'` to force.
+- `{ status: 'needs-decision', reason: 'empty-comprehension', target, envContext, attention }` — EXTEND
+  found no existing stack in the active environment's mirror. Do NOT re-run as greenfield to "make it
+  work": the delta planner would have classified every sub-WF as new and rebuilt the whole stack
+  against whatever project the session points at. Check `envContext`, re-run `mirror-sync`, or choose
+  greenfield deliberately.
 - `{ status: 'failed', stage, reason, … }` — a structural failure (dependency cycle in the plan).
 - `{ status: 'partial', … attention }` — some sub-WFs built green, a failure halted the rest. Surface
   `attention` + the per-sub-WF list verbatim; offer to fix the failing sub-WF and resume.

@@ -211,7 +211,7 @@ npx n8nac native-mcp status <env> --include-tools --json
 npx n8nac native-mcp disable <env>
 ```
 
-### Evaluation: MCP als Test-Pfad (Stand n8nac 2.4.0)
+### Evaluation: MCP als Test-Pfad (Stand n8nac 2.5.0)
 
 | Test-Szenario | Heute nutzen | Begründung |
 |---|---|---|

@@ -44,8 +44,9 @@ schemas/_index.json
 n8nac-skills
 n8nac-skills.cmd
 
-# Local Claude Code settings
-.claude/settings.json
+# Claude Code settings: settings.json is SHARED (enabledPlugins, the N8NAC_ENVIRONMENT pin) and
+# must be tracked — an ignored copy leaves a fresh clone with the plugin silently disabled (#54).
+# Only the per-machine overrides stay local.
 .claude/settings.local.json
 
 # Compiled workflow output

@@ -32,6 +32,7 @@ allowed-tools: Read, Grep
 | Add a new environment | `npx n8nac env add <name> --base-url <url> --workflows-path workflows` |
 | Switch active environment | `npx n8nac env use <name>` (alias: `env pin`) |
 | Store API key for an environment | `printf "%s" "$N8N_API_KEY" \| npx n8nac env auth set <name> --api-key-stdin` |
+| Remove the stored API key of ONE environment (n8nac ≥ 2.5) | `npx n8nac env auth clear <name>` |
 | Update any env property (URL / project / sync folder / name) | `npx n8nac env update <name-or-id> --base-url <url>` (swap flag as needed) |
 | Target one command at a non-active env | `npx n8nac --env <name> <command>` (root flag) |
 
@@ -70,6 +71,7 @@ allowed-tools: Read, Grep
 | Test webhook/chat/form (POST body) | `npx n8nac test <id> --data '<json>'` |
 | Test webhook (GET query string) | `npx n8nac test <id> --query '<json>'` |
 | Test against production URL (workflow must be active) | `npx n8nac test <id> --prod --data '<json>'` |
+| Push WITHOUT releasing to production (2.6+; `push` otherwise publishes the running version) | `npx n8nac push <file> --draft` |
 | List recent executions for a workflow | `npx n8nac execution list --workflow-id <id> --limit 10` |
 | Get one execution's full I/O | `npx n8nac execution get <executionId> --include-data` |
 | Get one execution's metadata only | `npx n8nac execution get <executionId>` |
@@ -83,8 +85,46 @@ allowed-tools: Read, Grep
 | Show JSON schema for a credential type | `npx n8nac credential schema <type>` |
 | Create a credential | `npx n8nac credential create --type <type> --name "<name>" --file cred.json` |
 | Delete a credential | `npx n8nac credential delete <id>` |
+| Change a credential value | **no `update` subcommand exists** — `credential delete` + `create`, then rewrite the id in every referencing `.workflow.ts` |
 
 > **For project-aware credential lookup**, use `/n8n-autopilot:find-credential` (default = active project, no cross-project leak). Use `credential list` directly only when you need raw shape.
+
+### Recipe: `oAuth2Api` with the client-credentials grant (machine-to-machine, no login)
+
+The `oAuth2Api` schema is a nest of `if/then` branches and the validator demands fields from branches
+that do not apply to your grant — guessing costs ~6 round trips. Working body (Microsoft Graph
+app-only shown; same shape for any client-credentials provider):
+
+```json
+{
+  "grantType": "clientCredentials",
+  "serverUrl": "",
+  "accessTokenUrl": "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token",
+  "clientId": "<app-id>",
+  "clientSecret": "<secret>",
+  "scope": "https://graph.microsoft.com/.default",
+  "authentication": "body",
+  "sendAdditionalBodyProperties": false,
+  "additionalBodyProperties": {},
+  "jweEnabled": false
+}
+```
+
+**Run `npx n8nac credential schema oAuth2Api` first and use ONLY the keys it lists** — the field set
+moves between n8n versions. Two traps:
+
+- **`allowedHttpRequestDomains` exists only on some n8n versions.** On n8n ≥ 2.20 the schema
+  rejects it as an additional property (HTTP 400, #89); on versions that have it, it is an enum
+  (`all` / `domains` / `none`), not a boolean, and `"none"` passes validation and then fails at
+  RUNTIME with *"This credential is configured to prevent use within an HTTP Request node"*. Add it
+  only when `credential schema` lists it, and then as `"all"` (or `"domains"` + a list). Since there
+  is no `update`, a wrong value means delete + recreate.
+- **`additionalBodyProperties` is type `json`** — pass `{}`, not `""`.
+
+Client-credentials needs **no** Connect button and no browser: the token is fetched server-side. If a
+credential seems to require a login, you picked the delegated `authorizationCode` flow by mistake —
+and a delegated Graph credential only sees what its user sees (the usual cause of a 403 on
+tenant-wide reads).
 
 ## Credentials (recipes / readiness)
 
@@ -113,6 +153,8 @@ allowed-tools: Read, Grep
 | Validate a `.workflow.ts` locally | `npx n8nac skills validate <path> --strict --json` |
 | Refresh AI context (AGENTS.md etc.) via skills facade | `npx n8nac skills update-ai` |
 | Launch n8nac's bundled MCP server (experimental) | `npx n8nac skills mcp` |
+| Several node-info/search lookups in ONE process (2.6+; saves ~1 npx start per call) | `npx n8nac skills batch --calls-file calls.json --compact --json` (calls = `[{"cmd":"search","query":"gmail"},{"cmd":"node-info","name":"gmailTool"}]`) |
+| Token-light node contract (identity + required params + snippet) | `npx n8nac skills node-info <type> --compact` |
 
 ## Native n8n MCP assist (ab n8nac 2.4 — read-only Broker gegen den Instanz-MCP)
 

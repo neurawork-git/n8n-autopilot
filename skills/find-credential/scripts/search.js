@@ -82,7 +82,19 @@ try {
   const parsed = JSON.parse(raw);
   creds = Array.isArray(parsed) ? parsed : (parsed.credentials || parsed.data || []);
 } catch (e) {
+  const out = `${(e && e.stderr) || ''}${(e && e.stdout) || ''}`;
   console.error('ERROR: npx n8nac credential list --json failed.');
+  // 403 here means the API key lacks the credential scope — NOT that the key is wrong. n8n checks the
+  // key's own `scopes` column with no fallback to the user's global role, and never backfills new
+  // scopes onto an existing key. A generic error sends people to re-paste a perfectly good key.
+  if (/\b403\b|Forbidden/i.test(out)) {
+    console.error('HTTP 403 — the key lacks the credential scope (it is not invalid; the same key can');
+    console.error('read/push/activate workflows). n8n never adds new scopes to an existing key, so this');
+    console.error('cannot be fixed by re-pasting it: create a NEW key with credential scopes, then');
+    console.error('  npx n8nac env auth set <env> --api-key-stdin');
+    console.error('Workaround for a single ID: open the credential in the n8n UI — the ID is the last');
+    console.error('path segment of the URL (/home/credentials/<id>).');
+  }
   process.exit(1);
 }
 

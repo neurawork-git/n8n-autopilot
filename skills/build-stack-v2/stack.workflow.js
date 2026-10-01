@@ -3,11 +3,13 @@ export const meta = {
   description: 'Deterministic JS-orchestrated build of a whole n8n workflow STACK from a PRP-style use case. Decomposes into sub-workflows along known rules, fixes handover contracts, documents the architecture (mermaid), then builds each sub-workflow bottom-up via build-workflow-v2. Two modes: GREENFIELD (new stack) and EXTEND (change an existing one). Gates and build order are JS control flow, not model discretion. Roles live in agents/n8n-stack-*.md; sub-builds reuse build.workflow.js / edit.workflow.js.',
   whenToUse: 'Ship an end-to-end multi-workflow stack with decomposition, contracts, and bottom-up build enforced by code.',
   phases: [
+    { title: 'Preflight', detail: 'resolve + log the target env/project before anything is created', model: 'sonnet' },
     { title: 'Mirror', detail: 'EXTEND only: mirror-sync so the local call-graph is complete', model: 'sonnet' },
     { title: 'Comprehend', detail: 'EXTEND only: n8n-stack-comprehender reconstructs the DAG from executeWorkflow refs', model: 'sonnet' },
     { title: 'Plan', detail: 'n8n-stack-architect decompose (greenfield) / delta (extend)', model: 'opus' },
     { title: 'Document', detail: 'write docs/<stack>.architecture.md (contracts + mermaid) via n8n-author', model: 'sonnet' },
     { title: 'Build', detail: 'topological bottom-up: workflow(build.workflow.js / edit.workflow.js) per sub-workflow', model: 'opus' },
+    { title: 'Activate', detail: 'activate deps-first (callees before callers); greenfield by default, extend opt-in via activate:true', model: 'sonnet' },
     { title: 'Report', detail: 'per-WF status + ids, update architecture doc with real workflowIds', model: 'sonnet' },
   ],
 }
@@ -54,6 +56,8 @@ const CURRENTSTACK_SCHEMA = {
 }
 const DOCWRITE_SCHEMA = { type: 'object', required: ['written', 'filePath'], additionalProperties: false, properties: { written: { type: 'boolean' }, filePath: { type: 'string' } } }
 const DETECT_SCHEMA = { type: 'object', required: ['existingStackFound'], additionalProperties: false, properties: { existingStackFound: { type: 'boolean' }, stackSlug: { type: ['string', 'null'] }, entryWorkflowId: { type: ['string', 'null'] }, matchReason: { type: 'string' } } }
+const ACTIVATE_SCHEMA = { type: 'object', required: ['activated'], additionalProperties: false, properties: { activated: { type: 'boolean' }, error: { type: ['string', 'null'] } } }
+const PREFLIGHT_SCHEMA = { type: 'object', required: ['envName', 'projectName'], additionalProperties: false, properties: { envName: { type: 'string' }, projectName: { type: 'string' }, projectId: { type: ['string', 'null'] }, host: { type: ['string', 'null'] }, workflowsPath: { type: ['string', 'null'] }, sessionEnvExplicit: { type: 'boolean', description: 'true when N8NAC_ENVIRONMENT is set for this session rather than falling back to the shared global active env' } } }
 
 // ---- args (arrives as JSON string from the runtime — parse defensively) ----
 const A = (() => { if (typeof args !== 'string') return args || {}; try { return JSON.parse(args) } catch (e) { return { description: args } } })()
@@ -65,6 +69,17 @@ const target = A.target || ''
 const buildScript = A.buildScript || ''
 const editScript = A.editScript || ''
 const syncScript = A.syncScript || ''
+// Requirements + proven-twin inputs. Without these the fan-out re-derives everything from prose and
+// produces no-op edits (or argues a real requirement away by diffing against a sibling stack).
+const specPath = A.specPath || ''
+const referenceStack = A.referenceStack || ''
+const SPEC_BLOCK = [
+  specPath ? `AUTHORITATIVE SPEC: read \`${specPath}\` FIRST and treat it as the requirements source of truth. Do NOT infer requirements from sibling stacks — a feature missing in a sibling is not proof it is unwanted.` : '',
+  referenceStack ? `REFERENCE IMPLEMENTATION: \`${referenceStack}\` is a PROVEN twin. Mirror its node patterns verbatim where they apply instead of re-deriving contracts; justify every deviation from the spec.` : '',
+].filter(Boolean).join('\n')
+// Activation flips production state. A new stack is useless inactive, so greenfield activates
+// bottom-up by default; an EXISTING stack keeps its deliberate active/inactive state unless asked.
+const doActivate = A.activate === undefined ? !isExtend : A.activate === true
 if (!buildScript) { log('Missing args.buildScript (absolute path to build-workflow-v2/build.workflow.js).'); return { status: 'aborted', reason: 'no-build-script' } }
 if (!isExtend && !description) { log('Greenfield needs args.description (the stack use-case / PRP).'); return { status: 'aborted', reason: 'no-description' } }
 if (isExtend && !change) { log('Extend needs args.change (what to change).'); return { status: 'aborted', reason: 'no-change' } }
@@ -148,6 +163,8 @@ async function writeDoc(content, filePath, phaseName) {
 }
 
 // Build ONE sub-workflow greenfield. Returns build.workflow.js result (status/workflowId/...).
+// deferActivation: the stack activates bottom-up at the end — n8n refuses to activate a caller
+// whose callee is not published, so per-sub-workflow activation fails on ORDER, not on defects.
 async function buildSub(sub, plan, idMap) {
   const c = contractsFor(sub.slug, plan.handovers)
   const childRefs = (sub.dependsOn || []).map((d) => `${d}=${idMap[d] || 'MISSING'}`).join(', ')
@@ -157,8 +174,53 @@ async function buildSub(sub, plan, idMap) {
     `OUTPUT contract: ${c.output}`,
     sub.dependsOn && sub.dependsOn.length ? `\nThis is an orchestrator. Sub-workflows you call via an Execute Workflow node (reference by these real workflowIds): ${childRefs}.` : '',
     `\nTrigger: ${sub.trigger}. Name the workflow EXACTLY: "${sub.name}". It is sub-workflow '${sub.slug}' of stack '${plan.stackSlug}'.`,
+    SPEC_BLOCK ? `\n${SPEC_BLOCK}` : '',
   ].join('\n')
-  return workflow({ scriptPath: buildScript }, { description: desc, testData: '' })
+  return workflow({ scriptPath: buildScript }, { description: desc, testData: '', deferActivation: true })
+}
+
+// Activate deps-first (callees before callers). A failure here IS informative: the callees below it
+// are already active, so it is not a publish-order artefact. Stop at the first one — every caller
+// above it would fail for the same reason.
+async function activateBottomUp(orderedSlugs, idMap) {
+  const out = []
+  for (const slug of orderedSlugs) {
+    const id = idMap[slug]
+    if (!id) { out.push({ slug, workflowId: null, activated: false, error: 'no workflowId (not built)' }); continue }
+    const r = await safe(
+      `Activate workflow ${id} (sub-workflow '${slug}'): run \`npx n8nac workflow activate ${id}\`. Every workflow it calls is already active, so publish order is NOT the cause of a failure here — report the real error verbatim.`,
+      { agentType: 'n8n-autopilot:n8n-tester', schema: ACTIVATE_SCHEMA, phase: 'Activate' },
+      { activated: false, error: 'activation agent produced no output' }
+    )
+    out.push({ slug, workflowId: id, activated: !!r.activated, error: r.error || null })
+    log(`activate ${slug} (${id}): ${r.activated ? 'OK' : `FAILED — ${r.error || 'unknown'}`}`)
+    if (!r.activated) { log('Stopping activation: callers above this workflow would fail for the same reason.'); break }
+  }
+  return out
+}
+
+// ===================================================================
+// PREFLIGHT — say out loud which env/project this run will touch
+// ===================================================================
+// A stack run creates and rewires workflows across a whole project. Doing that against the wrong one
+// is the most expensive mistake available here, and the old failure mode was silent: with no
+// per-session pin, commands fall through to the SHARED global active env (#14). enforce-env.sh
+// refuses un-pinned instance commands, but only once a build agent is already running — by then the
+// run has spent agents and the abort looks like an unrelated tool error. Resolve it up front instead,
+// and put it in the result so the report says which project was touched.
+phase('Preflight')
+const preflight = await safe(
+  `Report the environment this session will operate in. Run \`npx n8nac env list --json\` (local-only, not gated) and \`npx n8nac workspace status --json\`. Return the ACTIVE environment's name, projectName, projectId, host and workflowsPath. Set sessionEnvExplicit=true only if the N8NAC_ENVIRONMENT variable is set for this session (check it, e.g. \`echo "$N8NAC_ENVIRONMENT"\`) — a non-empty value means explicit, an empty one means the run would fall back to the shared global active env. Do NOT run \`env use\` or change anything.`,
+  { agentType: 'n8n-autopilot:n8n-mirror', schema: PREFLIGHT_SCHEMA, phase: 'Preflight' },
+  null
+)
+if (preflight) {
+  log(`Target: env=${preflight.envName} project=${preflight.projectName}${preflight.host ? ` host=${preflight.host}` : ''}`)
+  if (preflight.sessionEnvExplicit === false) {
+    log('WARNING: no per-session N8NAC_ENVIRONMENT — this run would follow the SHARED global active env, which another session can change mid-run.')
+  }
+} else {
+  log('Preflight could not resolve the environment — continuing, but the report will not name the target project.')
 }
 
 // ===================================================================
@@ -183,7 +245,7 @@ if (!isExtend) {
   // ---- PLAN ----
   phase('Plan')
   const plan = await safe(
-    `Decompose this end-to-end use case into a stack of sub-workflows. Follow your DECOMPOSE rules; fix every handover contract; set dependsOn so the graph is acyclic and buildable bottom-up.\nUse case (PRP):\n"""${description}"""`,
+    `Decompose this end-to-end use case into a stack of sub-workflows. Follow your DECOMPOSE rules; fix every handover contract; set dependsOn so the graph is acyclic and buildable bottom-up.\nUse case (PRP):\n"""${description}"""${SPEC_BLOCK ? `\n${SPEC_BLOCK}` : ''}`,
     { agentType: 'n8n-autopilot:n8n-stack-architect', schema: STACKPLAN_SCHEMA, model: 'opus', phase: 'Plan' },
     null
   )
@@ -223,18 +285,32 @@ if (!isExtend) {
     log(`Built ${slug} → ${r.workflowId}`)
   }
 
+  // ---- ACTIVATE bottom-up (callees before callers) ----
+  const built = results.filter((r) => r.status === 'success').length
+  const complete = built === slugs.length
+  let activation = []
+  if (doActivate && complete) {
+    phase('Activate')
+    activation = await activateBottomUp(order, idMap)
+  } else if (doActivate) {
+    log('Skipping activation: stack incomplete — activating a partial call-graph only produces callee errors.')
+  }
+
   // ---- DOCUMENT (final, real ids) + REPORT ----
   phase('Report')
   await writeDoc(renderArchitectureDoc(plan, idMap), docPath, 'Report')
-  const built = results.filter((r) => r.status === 'success').length
-  const complete = built === slugs.length
+  const inactive = activation.filter((a) => !a.activated).map((a) => a.slug)
   return {
     status: complete ? 'success' : 'partial',
-    mode: 'greenfield', stackSlug: plan.stackSlug, entry: plan.entry,
+    mode: 'greenfield', stackSlug: plan.stackSlug, entry: plan.entry, envContext: preflight,
     architectureDoc: docPath, buildOrder: order,
     subWorkflows: results, builtCount: built, totalCount: slugs.length,
-    idMap,
-    attention: complete ? '' : `Stack incomplete: ${built}/${slugs.length} sub-WFs built green. First failure halted the rest — see subWorkflows[].`,
+    idMap, activation,
+    attention: [
+      complete ? '' : `Stack incomplete: ${built}/${slugs.length} sub-WFs built green. First failure halted the rest — see subWorkflows[].`,
+      inactive.length ? `Not active: ${inactive.join(', ')} — see activation[].error.` : '',
+      complete && !inactive.length ? 'All sub-workflows deployed + active. The stack is NOT yet proven end to end — run the real use case once against the entry trigger.' : '',
+    ].filter(Boolean).join(' '),
   }
 }
 
@@ -259,6 +335,18 @@ const cur = await safe(
   null
 )
 if (!cur) return { status: 'failed', stage: 'comprehend', error: 'stack-comprehender produced no call-graph after retries', target }
+// An EXTEND that comprehended nothing must NOT fall through into the build phases: the delta planner
+// would classify every sub-WF as "new" and rebuild the whole stack from scratch — against whichever
+// project the session env happens to point at. That is exactly the wrong-project accident in #14, and
+// it is silent, because rebuilding looks like normal progress. Stop and let a human confirm the target.
+if (!cur.subWorkflows || cur.subWorkflows.length === 0) {
+  log('Comprehend found NO sub-workflows for this target — refusing to treat the whole stack as new.')
+  return {
+    status: 'needs-decision', reason: 'empty-comprehension', stage: 'comprehend', target,
+    envContext: preflight,
+    attention: `No existing stack was found${target ? ` for target "${target}"` : ''} in the local mirror of the ACTIVE environment${preflight ? ` (env=${preflight.envName}, project=${preflight.projectName})` : ''}. Either the session is pointed at the wrong environment/project, or the mirror is stale, or this stack does not exist yet. Confirm the env (N8NAC_ENVIRONMENT), re-run mirror-sync, or run in greenfield mode deliberately — do not let extend rebuild it blind.`,
+  }
+}
 if (cur.missingLocal && cur.missingLocal.length) log(`WARNING mirror gap: ${cur.missingLocal.length} referenced workflowId(s) have no local file: ${cur.missingLocal.join(', ')}. Re-run mirror-sync.`)
 if (cur.docDrift) log(`Doc drift vs reality: ${cur.docDrift}`)
 log(`Current stack "${cur.stackSlug}": ${cur.subWorkflows.length} sub-WF(s), ${cur.edges.length} edge(s), entry=${cur.entry}`)
@@ -267,7 +355,7 @@ log(`Current stack "${cur.stackSlug}": ${cur.subWorkflows.length} sub-WF(s), ${c
 phase('Plan')
 const curBlock = `currentStack:\n  entry: ${cur.entry}\n  subWorkflows: ${cur.subWorkflows.map((s) => `${s.slug}(${s.workflowId},${s.kind})`).join(', ')}\n  edges: ${cur.edges.map((e) => `${e.from}->${e.to}`).join(', ')}`
 const delta = await safe(
-  `Plan the DELTA for this change against the existing stack.\nChange:\n"""${change}"""\n${curBlock}\nClassify each sub-WF new/changed/unchanged; new ones get full sub-WF specs (slug/name/trigger/kind/purpose/dependsOn); changed ones get {slug, workflowId, changeDescription}; name any handover changes (both producer + consumer).`,
+  `Plan the DELTA for this change against the existing stack.\nChange:\n"""${change}"""\n${curBlock}\n${SPEC_BLOCK ? `${SPEC_BLOCK}\n` : ''}Classify each sub-WF new/changed/unchanged; new ones get full sub-WF specs (slug/name/trigger/kind/purpose/dependsOn); changed ones get {slug, workflowId, changeDescription}; name any handover changes (both producer + consumer).`,
   { agentType: 'n8n-autopilot:n8n-stack-architect', schema: DELTA_SCHEMA, model: 'opus', phase: 'Plan' },
   null
 )
@@ -308,10 +396,11 @@ const newBuiltOk = results.every((r) => r.status === 'success')
 if (newBuiltOk) {
   for (const ch of delta.changedSubWorkflows) {
     const childHint = cur.edges.filter((e) => e.from === ch.slug).map((e) => `${e.to}=${idMap[e.to] || '?'}`).join(', ')
-    const changeText = `${ch.changeDescription}${childHint ? `\nIf this rewires Execute-Workflow nodes, the child workflowIds are: ${childHint}.` : ''}`
+    const changeText = `${ch.changeDescription}${childHint ? `\nIf this rewires Execute-Workflow nodes, the child workflowIds are: ${childHint}.` : ''}${SPEC_BLOCK ? `\n${SPEC_BLOCK}` : ''}`
     log(`Editing CHANGED ${ch.slug} (${ch.workflowId})…`)
-    const r = await workflow({ scriptPath: editScript }, { target: ch.workflowId, change: changeText, testData: '' })
-    results.push({ slug: ch.slug, kind: 'changed', status: r?.status, workflowId: ch.workflowId, filePath: r?.filePath })
+    const r = await workflow({ scriptPath: editScript }, { target: ch.workflowId, change: changeText, testData: '', deferTest: true })
+    results.push({ slug: ch.slug, kind: 'changed', status: r?.status, noop: r?.noop === true, workflowId: ch.workflowId, filePath: r?.filePath })
+    if (r?.noop) log(`CHANGED ${ch.slug}: already satisfied — nothing to deploy.`)
     if (!r || r.status !== 'success') { log(`HALT: edit of ${ch.slug} not green (status=${r?.status}).`); break }
     log(`Edited CHANGED ${ch.slug}`)
   }
@@ -332,11 +421,28 @@ await writeDoc(renderArchitectureDoc(reportPlan, idMap), docPath, 'Report')
 
 const applied = results.filter((r) => r.status === 'success').length
 const planned = (newOrder?.length || 0) + delta.changedSubWorkflows.length
+const noops = results.filter((r) => r.noop).map((r) => r.slug)
+// Extend leaves activation alone unless asked: an existing stack's active/inactive state is a
+// deliberate operational choice. Opt in with activate:true.
+let activation = []
+if (doActivate && applied === planned) {
+  phase('Activate')
+  const stackOrder = topoSort(allSubs.map((s) => s.slug), (slug) => (allSubs.find((s) => s.slug === slug)?.dependsOn) || [])
+  activation = await activateBottomUp(stackOrder || allSubs.map((s) => s.slug), idMap)
+} else if (!doActivate) {
+  log('Not touching activation state (extend default). Pass activate:true to activate the stack bottom-up.')
+}
+const inactive = activation.filter((a) => !a.activated).map((a) => a.slug)
 return {
   status: applied === planned ? 'success' : 'partial',
-  mode: 'extend', stackSlug: cur.stackSlug, entry: cur.entry,
+  mode: 'extend', stackSlug: cur.stackSlug, entry: cur.entry, envContext: preflight,
   architectureDoc: docPath, mirror: mirror ? { status: mirror.status, mirrorComplete: mirror.mirrorComplete } : null,
   missingLocal: cur.missingLocal || [], docDrift: cur.docDrift || null,
-  applied: results, appliedCount: applied, plannedCount: planned, idMap,
-  attention: applied === planned ? '' : `Extend incomplete: ${applied}/${planned} sub-WFs applied green. First failure halted the rest — see applied[].`,
+  applied: results, appliedCount: applied, plannedCount: planned, noops, idMap, activation,
+  attention: [
+    applied === planned ? '' : `Extend incomplete: ${applied}/${planned} sub-WFs applied green. First failure halted the rest — see applied[].`,
+    noops.length ? `Already satisfied (no-op): ${noops.join(', ')}.` : '',
+    inactive.length ? `Not active: ${inactive.join(', ')} — see activation[].error.` : '',
+    applied === planned ? 'Deployed, but NOT proven: run the real use case once against the entry trigger with real input.' : '',
+  ].filter(Boolean).join(' '),
 }

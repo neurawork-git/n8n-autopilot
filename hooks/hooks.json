@@ -5,42 +5,73 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/report-session-env.sh 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/report-session-env.sh 2>&1 || true",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/setup-check.sh 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/setup-check.sh 2>&1 || true",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-schema-versions.sh --quiet 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-schema-versions.sh --quiet 2>&1 || true",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-credential-freshness.sh --quiet 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-credential-freshness.sh --quiet 2>&1 || true",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-mirror-drift.sh --quiet 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-mirror-drift.sh --quiet 2>&1 || true",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-workspace-migration.sh --quiet 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-workspace-migration.sh --quiet 2>&1 || true",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-feedback-pending.sh --quiet 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-custom-nodes-resolution.sh --quiet 2>&1 || true",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-instance-cache.sh --quiet 2>&1 || true",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-plugin-version.sh 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && node ${CLAUDE_PLUGIN_ROOT}/scripts/check-native-mcp.mjs --quiet 2>&1 || true",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-feedback-pending.sh --quiet 2>&1 || true",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-plugin-version.sh 2>&1 || true",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/capture-feedback.sh 2>&1 || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/capture-feedback.sh 2>&1 || true",
             "timeout": 10
           }
         ]
@@ -51,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/capture-feedback.sh 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/capture-feedback.sh 2>&1 || true",
             "timeout": 10
           }
         ]
@@ -62,7 +93,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/suggest-feedback.sh",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/suggest-feedback.sh",
             "timeout": 10
           }
         ]
@@ -70,27 +101,12 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
-            "command": "INPUT=\"$CLAUDE_TOOL_INPUT\"; if echo \"$INPUT\" | grep -qE '(curl|wget|urllib|Invoke-RestMethod|requests\\.).*(/api/v1|n8n\\.cloud|n8n\\.io)' 2>/dev/null; then if echo \"$INPUT\" | grep -qE '/api/v1/data-tables' 2>/dev/null; then : ; else echo 'BLOCKED: Use n8nac CLI instead of direct API calls (curl/wget/urllib/Invoke-RestMethod). Carve-out: /api/v1/data-tables is allowed — loop the curl from the /n8n-autopilot:data-tables skill, do not switch HTTP tool to dodge this.' >&2; exit 2; fi; fi",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "INPUT=\"$CLAUDE_TOOL_INPUT\"; bash ${CLAUDE_PLUGIN_ROOT}/scripts/enforce-env.sh \"$INPUT\"",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "INPUT=\"$CLAUDE_TOOL_INPUT\"; bash ${CLAUDE_PLUGIN_ROOT}/scripts/push-gate.sh \"$INPUT\"",
-            "timeout": 15
-          },
-          {
-            "type": "command",
-            "command": "INPUT=\"$CLAUDE_TOOL_INPUT\"; if echo \"$INPUT\" | grep -qE 'n8nac push' 2>/dev/null; then bash ${CLAUDE_PLUGIN_ROOT}/scripts/ensure-mcp-trigger-setting.sh \"$INPUT\" 2>&1; fi",
-            "timeout": 5
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/pretooluse-gate.sh",
+            "timeout": 150
           }
         ]
       }

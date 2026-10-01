@@ -30,10 +30,24 @@ Parse `$ARGUMENTS`:
 
 ## Review & push (default)
 
+### 0. Resolve the plugin root once
+
+`$CLAUDE_PLUGIN_ROOT` is expanded inside `hooks.json` commands only — in the Bash tool it is EMPTY,
+and every `node "$CLAUDE_PLUGIN_ROOT/…"` call below then fails with `MODULE_NOT_FOUND` on a path
+under the shell root (#74, #100). Set it from the skill's base directory (the "Base directory for
+this skill" line Claude Code printed when this skill loaded — its plugin root is two levels up):
+
+```bash
+PR="${CLAUDE_PLUGIN_ROOT:-<plugin root, e.g. ~/.claude/plugins/marketplaces/n8n-autopilot>}"
+test -f "$PR/skills/feedback/scripts/record.js" || echo "wrong plugin root: $PR"
+```
+
+Use `"$PR"` in every command below.
+
 ### 1. Resolve the session transcript
 
 ```bash
-node "$CLAUDE_PLUGIN_ROOT/skills/feedback/scripts/latest-transcript.js" --workspace .
+node "$PR/skills/feedback/scripts/latest-transcript.js" --workspace .
 ```
 
 Use the printed path. (If it errors — no transcript — fall back to reviewing `events.ndjson` only.)
@@ -68,7 +82,7 @@ values, no URLs.** Node types (`n8n-nodes-base.github`) and n8nac commands (`n8n
 and REQUIRED context — put them in `area`.
 
 ```bash
-node "$CLAUDE_PLUGIN_ROOT/skills/feedback/scripts/record.js" '{
+node "$PR/skills/feedback/scripts/record.js" '{
   "kind": "finding",
   "type": "schema-gap|cli-friction|validation-loop|mcp-detour|credential-gap|doc-gap|design-antipattern|bug|other",
   "severity": "low|medium|high",
@@ -87,25 +101,45 @@ counts as `signals` evidence. Repeat per problem — 3 problems = 3 findings = 3
 ### 6. Run the deterministic PII gate (show the user)
 
 ```bash
-node "$CLAUDE_PLUGIN_ROOT/skills/feedback/scripts/redact-check.js" .n8n-autopilot/feedback/process.ndjson
+node "$PR/skills/feedback/scripts/redact-check.js" .n8n-autopilot/feedback/process.ndjson
 ```
 
 - **OK** → proceed.
 - **BLOCKED** → the gate lists the offending field. Re-redact that field (neutralize it) and rewrite
   the record, then re-run. NEVER bypass the gate.
 
-### 7. Show every pending record + confirm
+### 7. Confirm — one line per finding, then a multiple-choice prompt
 
-Display all pending records verbatim (run `show`). State the target: the plugin's ingest webhook
-creates **one PUBLIC GitHub issue per finding** on `neurawork-git/n8n-autopilot` (`repoLabel`/customer
-name stripped; `reporter` = OS username IS included by design). Require an explicit
-**"ja / bestätigt"**.
+Do **not** dump the records verbatim. With three or more findings that is a wall of text nobody reads,
+and an unread confirmation is not consent. Render a compact table:
+
+```
+| # | sev | type | title |
+|---|-----|------|-------|
+| 1 | high   | bug          | push rejects a validated file … |
+| 2 | medium | cli-friction | extend mode re-builds unchanged … |
+```
+
+Then state the target in **one** line — *"pushes N finding(s) as N public GitHub issues on
+`neurawork-git/n8n-autopilot`; customer/repo name stripped, `reporter` = your OS username included by
+design"* — and ask via **`AskUserQuestion`**, not free text:
+
+- **Alle pushen** (N findings)
+- **Auswählen** — then list the numbers to push
+- **Abbrechen** — nothing is sent
+
+Verbatim JSON stays available on request (`show`); offer it, do not print it unprompted. Anything other
+than an explicit confirmation means no push.
 
 ### 8. Push
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/skills/feedback/scripts/sync.sh"
+bash "$PR/skills/feedback/scripts/sync.sh"              # "Alle pushen"
+bash "$PR/skills/feedback/scripts/sync.sh" --only 1,3   # "Auswählen"
 ```
+
+`--only` takes the numbers from the step-7 table. Unselected findings **stay pending** — they are not
+marked synced, so a later run can still push them.
 
 `sync.sh` pushes **finding records only** (raw event counts are local telemetry — the review flow
 distills them into findings first; sync refuses with a hint if only counts are pending). It re-runs
@@ -127,8 +161,8 @@ Store the raw Q&A as a `process` record, then **distill each concrete pain point
 `finding` record** (step 5 schema) — only findings become issues:
 
 ```bash
-node "$CLAUDE_PLUGIN_ROOT/skills/feedback/scripts/record.js" '{"answers":{...},"freeText":"..."}'
-node "$CLAUDE_PLUGIN_ROOT/skills/feedback/scripts/record.js" '{"kind":"finding","type":"...","title":"...","observed":"...", ...}'
+node "$PR/skills/feedback/scripts/record.js" '{"answers":{...},"freeText":"..."}'
+node "$PR/skills/feedback/scripts/record.js" '{"kind":"finding","type":"...","title":"...","observed":"...", ...}'
 ```
 
 Then run the PII gate (step 6) before any sync.

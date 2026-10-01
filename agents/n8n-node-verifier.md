@@ -28,7 +28,17 @@ Given ONE node type, return its verified parameter contract. You are the guard a
 
 1. Run `npx n8nac skills node-info <type> --json` (fall back to `npx n8nac skills node-schema <type> --json`).
 2. **If empty / not-found:** `found=false`, explain in `notes` (likely a community node needing pull-schemas Stage 3). Return NO params — never invent.
-3. **If found:** return the parameter NAMES exactly as the schema defines them — only the params this node's purpose needs plus all required ones — the highest `typeVersion`, and any credential keys.
+3. **If found:** return the parameter NAMES exactly as the schema defines them — only the params this node's purpose needs plus all required ones — the highest `typeVersion` the schema lists (a proposal only — the push-lint gate checks it against the running instance and blocks a version the instance lacks), and any credential keys.
+4. **Cross-check against the instance.** Look the type up in `.n8n-autopilot/instance-cache.json`
+   (`nodeTypeUsage` / `nodeTypesProvenOnActiveWorkflows` — grep for the type string, do not read the
+   file whole). Set `provenOnInstance=true` if it is in use there, `false` if the cache exists and does
+   not list it, `null` if there is no cache. When `false`, say so in `notes`: the type exists in
+   n8nac's knowledge base but has never run on this instance, so its availability and its accepted
+   `typeVersion` are both unverified here.
+
+`npx n8nac skills node-info` answers "does this node exist" from an instance-independent knowledge
+base — it reports every version n8n has ever shipped (`switch` → `[1,2,3,3.1,3.2,3.3,3.4]`) and knows
+nothing about the n8n version running on the target. "Exists" and "exists here" are different claims.
 
 ## The adversarial rule
 

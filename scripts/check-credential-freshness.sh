@@ -64,9 +64,29 @@ if [ "$MISSING_COUNT" -gt 0 ]; then
   echo "=== Credential Freshness Check ==="
   printf "%b" "$MISSING_LIST"
   echo ""
+
+  # A stale ID is NOT automatically fixable. --fix-workflows joins on credential *name*
+  # within the pinned project; if that name resolves nowhere, the reference is an orphan
+  # and the auto-action is a guaranteed no-op. Ask the fixer (exit 3 == "would rewrite")
+  # instead of guessing — a mandatory signal that cannot be satisfied fires every session
+  # and trains everyone to ignore the whole auto-reaction mechanism.
+  FIXER="${CLAUDE_PLUGIN_ROOT:-.}/skills/sync-credentials/scripts/fix-workflows.js"
+  if [ -f "$FIXER" ]; then
+    node "$FIXER" --dry-run >/dev/null 2>&1
+    if [ "$?" -eq 3 ]; then
+      echo "$MISSING_COUNT stale credential reference(s) found. Run: /n8n-autopilot:sync-credentials --fix-workflows"
+      echo "AUTOPILOT_ACTION_REQUIRED: /n8n-autopilot:sync-credentials --fix-workflows"
+      exit 1
+    fi
+    echo "INFO: none of these resolve by credential name in the pinned project — they are orphans,"
+    echo "      not stale IDs. --fix-workflows cannot repair them (no auto-action emitted)."
+    echo "      Fix: create the credential on the instance, or drop the reference from the workflow."
+    echo "      Full list: node \"\$CLAUDE_PLUGIN_ROOT/skills/sync-credentials/scripts/fix-workflows.js\" --dry-run"
+    exit 1
+  fi
+
+  # Fixer not reachable (unusual): fall back to the old behaviour rather than staying silent.
   echo "$MISSING_COUNT stale credential reference(s) found. Run: /n8n-autopilot:sync-credentials --fix-workflows"
-  # Machine-parsable signal for Claude to auto-trigger the action (see CLAUDE.md Auto-Reactions).
-  # --fix-workflows rewrites the stale IDs by joining on credential name.
   echo "AUTOPILOT_ACTION_REQUIRED: /n8n-autopilot:sync-credentials --fix-workflows"
   exit 1
 fi

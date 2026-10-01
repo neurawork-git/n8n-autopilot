@@ -13,6 +13,21 @@
 set -u
 
 WEBHOOK_URL="${N8N_AUTOPILOT_FEEDBACK_URL:-https://n8n.neurawork.app/webhook/autopilot-feedback}"
+
+# --only 1,3  → push just those findings, numbered as `show` lists them (events.ndjson then
+# process.ndjson, file order). Backs the "Auswählen" branch of the confirmation prompt; without it
+# the skill would offer a choice this script cannot honour. Unselected records stay pending.
+ONLY=""
+ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --only) ONLY="$2"; shift 2 ;;
+    --only=*) ONLY="${1#--only=}"; shift ;;
+    *) ARGS+=("$1"); shift ;;
+  esac
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
+
 WORKSPACE="${1:-$PWD}"
 STORE="$WORKSPACE/.n8n-autopilot/feedback"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -33,7 +48,7 @@ fi
 PAYLOAD="$(mktemp)"
 COUNT=$(node -e '
 const fs=require("fs"), path=require("path"), os=require("os");
-const store=process.argv[1], out=process.argv[2], scriptDir=process.argv[3];
+const store=process.argv[1], out=process.argv[2], scriptDir=process.argv[3], only=process.argv[4]||"";
 let findings=[]; let nonFindings=0;
 for (const f of ["events.ndjson","process.ndjson"]) {
   const p=path.join(store,f); if(!fs.existsSync(p)) continue;
@@ -47,6 +62,11 @@ for (const f of ["events.ndjson","process.ndjson"]) {
   }
 }
 if (!findings.length) { process.stdout.write(nonFindings ? "NOFINDINGS" : "0"); process.exit(0); }
+if (only) {
+  const want=new Set(only.split(",").map(s=>parseInt(s.trim(),10)).filter(n=>n>=1&&n<=findings.length));
+  if (!want.size) { process.stdout.write("BADSELECTION"); process.exit(0); }
+  findings=findings.filter((_,i)=>want.has(i+1));
+}
 // Public target -> strip repoLabel (customer basename).
 const clean=findings.map(r=>{const {repoLabel,...rest}=r; return rest;});
 let pluginVersion="";
@@ -58,7 +78,7 @@ let reporter="";
 try { reporter=os.userInfo().username||""; } catch(e){}
 fs.writeFileSync(out, JSON.stringify({kind:"autopilot-feedback",schemaVersion:2,pluginVersion,reporter,findings:clean}));
 process.stdout.write(String(clean.length));
-' "$STORE" "$PAYLOAD" "$SCRIPT_DIR" 2>/dev/null || echo "ERR")
+' "$STORE" "$PAYLOAD" "$SCRIPT_DIR" "$ONLY" 2>/dev/null || echo "ERR")
 
 if [ "$COUNT" = "ERR" ]; then
   echo "[feedback sync] ERROR: failed to read local records." >&2
@@ -71,6 +91,10 @@ fi
 if [ "$COUNT" = "NOFINDINGS" ]; then
   echo "[feedback sync] ERROR: pending records are raw signal counts, not findings." >&2
   echo "[feedback sync] Run the /n8n-autopilot:feedback review flow first — it distills the counts into typed, actionable finding records (one issue each). Nothing was pushed." >&2
+  rm -f "$PAYLOAD"; exit 1
+fi
+if [ "$COUNT" = "BADSELECTION" ]; then
+  echo "[feedback sync] ERROR: --only '$ONLY' selected no valid finding (numbers are 1..N as listed by \`show\`)." >&2
   rm -f "$PAYLOAD"; exit 1
 fi
 
@@ -103,25 +127,34 @@ fi
 ISSUE_URLS=$(node -e 'try{const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write((r.issues||[]).join("\n"));}catch(e){}' "$RESPONSE" 2>/dev/null)
 rm -f "$RESPONSE"
 
-# Success — mark ALL unsynced records synced (raw event counts were consumed by the review
-# that produced the pushed findings): move them to synced.ndjson.
+# Success — move the pushed records to synced.ndjson.
+#   full push : mark ALL unsynced records (the raw event counts were consumed by the review that
+#               produced these findings, so they are done too).
+#   --only    : mark ONLY the findings actually sent. Marking the rest would silently discard
+#               feedback the user deliberately held back — the selection must survive the push.
 node -e '
 const fs=require("fs"), path=require("path");
-const store=process.argv[1];
+const store=process.argv[1], only=process.argv[2]||"";
 const synced=path.join(store,"synced.ndjson");
+const want=only ? new Set(only.split(",").map(s=>parseInt(s.trim(),10))) : null;
+let findingIdx=0;
 for (const f of ["events.ndjson","process.ndjson"]) {
   const p=path.join(store,f); if(!fs.existsSync(p)) continue;
   const keep=[], moved=[];
   for (const line of fs.readFileSync(p,"utf8").split("\n")) {
     const s=line.trim(); if(!s) continue;
     let r; try { r=JSON.parse(s); } catch(e){ continue; }
-    if (r.synced===true) keep.push(JSON.stringify(r));
-    else { r.synced=true; moved.push(JSON.stringify(r)); }
+    if (r.synced===true) { keep.push(JSON.stringify(r)); continue; }
+    // Index findings in the same order the payload builder did, so --only lines up.
+    const isFinding = r.kind==="finding";
+    const n = isFinding ? ++findingIdx : null;
+    const pushed = want ? (isFinding && want.has(n)) : true;
+    if (pushed) { r.synced=true; moved.push(JSON.stringify(r)); } else keep.push(JSON.stringify(r));
   }
   fs.writeFileSync(p, keep.length ? keep.join("\n")+"\n" : "");
   if (moved.length) fs.appendFileSync(synced, moved.join("\n")+"\n");
 }
-' "$STORE" 2>/dev/null || true
+' "$STORE" "$ONLY" 2>/dev/null || true
 
 echo "[feedback sync] pushed $COUNT finding(s), one issue each:"
 if [ -n "$ISSUE_URLS" ]; then echo "$ISSUE_URLS" | sed 's/^/  /'; fi

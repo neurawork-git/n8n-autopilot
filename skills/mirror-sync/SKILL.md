@@ -16,11 +16,24 @@ The edit flow of `/n8n-autopilot:build-workflow-v2` is **local-first** — it as
 
 ## How to run
 
-Invoke the script via the `Workflow` tool (runs in the consumer-repo cwd so `npx n8nac` resolves the pinned project + sync folder):
+Normalize the script into the scratchpad, then invoke **that copy** via the `Workflow` tool (it runs in
+the consumer-repo cwd, so `npx n8nac` still resolves the pinned project + sync folder):
 
+```bash
+sed 's/\r$//' "<plugin>/skills/mirror-sync/sync.workflow.js" > "<scratchpad>/sync.workflow.js"
 ```
-Workflow({ scriptPath: "<plugin>/skills/mirror-sync/sync.workflow.js" })
 ```
+Workflow({ scriptPath: "<scratchpad>/sync.workflow.js" })
+```
+
+> **The `sed` is not optional — and seeing LF once does not excuse skipping it.** Line endings in the
+> installed copy are *sporadic*: measured with `file`, this script was CRLF in 5.3.0 and 5.3.1 and LF in
+> 5.3.2, while `build.workflow.js` was LF in all three. A version that works proves nothing about the
+> next install, so normalize unconditionally — even though the repo blob is LF and
+> `.gitattributes` pins `*.js text eol=lf`. `Workflow({scriptPath})` then refuses it outright:
+> *"script contains control characters that would be hidden in the approval dialog"*. Normalizing
+> costs one command and is content-identical to the blob (`cmp` against `git show HEAD:<path>`).
+> Never hand-edit the plugin cache.
 
 Then render the result:
 - `{ status:'success', pulled, mirrorComplete:true }` — report how many pulled (0 = already complete).

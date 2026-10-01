@@ -10,10 +10,10 @@
 
 **Ein Claude Code Plugin, das natürlichsprachliche Prompts in validierte, deployte n8n-Workflows verwandelt.**
 
-[![Version](https://img.shields.io/badge/version-4.10.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.6.0-blue.svg)](CHANGELOG.md)
 [![Lizenz: MIT](https://img.shields.io/badge/lizenz-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
-[![n8nac](https://img.shields.io/badge/n8nac-2.3.6%20(min%202.3.0)-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
+[![n8nac](https://img.shields.io/badge/n8nac-2.5.0%20(min%202.3.0)-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
 [![Claude Code](https://img.shields.io/badge/claude%20code-plugin-d97757.svg)](https://docs.claude.com/claude-code)
 
 ```
@@ -268,7 +268,7 @@ claude plugin install n8n-as-code@n8nac-marketplace
 
 ### 2. Environment anlegen und aktivieren (n8nac ≥ 2.3)
 
-> **Bezugsversion n8nac: 2.3.6.** Ab 2.3.x ist `workspace` read-only (nur `status`/`get`). Alle Instanz- und Projekt-Konfiguration liegt auf `env`. Die alten Commands `init` / `init-auth` / `init-project` sowie alle schreibenden `workspace`-Mutators wurden entfernt.
+> **Bezugsversion n8nac: 2.5.0.** Ab 2.3.x ist `workspace` read-only (nur `status`/`get`). Alle Instanz- und Projekt-Konfiguration liegt auf `env`. Die alten Commands `init` / `init-auth` / `init-project` sowie alle schreibenden `workspace`-Mutators wurden entfernt.
 
 ```bash
 # 2a. Environment anlegen (Instanz-URL + Sync-Folder in einem Schritt)
@@ -285,7 +285,7 @@ npx n8nac env update Prod --project-name Personal
 # oder beim Anlegen direkt: env add Prod ... --project-name Personal
 ```
 
-**Migration von n8nac < 2.3?** Es gibt keinen `migrate`-Befehl mehr — der Workspace-Storage ist v4-nativ. Eine verwaiste `./n8nac-config.json` im Repo einfach manuell löschen; die Config liegt jetzt im User-Home (`~/n8nac-config.json` + `~/.n8n-manager/`).
+**Migration von n8nac < 2.3?** Es gibt keinen `migrate`-Befehl mehr — der Workspace-Storage ist v4-nativ, und die Config liegt *normalerweise* im User-Home (`~/n8nac-config.json` + `~/.n8n-manager/`). Eine `./n8nac-config.json` im Repo aber **nicht** vorschnell löschen: 2.5.0 liest sie, und wenn keine Home-Config existiert, ist sie die einzige — sie zu löschen zerstört sämtliche Environment-Bindings. Erst `npx n8nac env list --json` prüfen; die SessionStart-Probe unterscheidet für dich zwischen *live* und *abgelöst* ([docs/rules/setup.md](docs/rules/setup.md)).
 
 ### 3. Node-Schemas ziehen
 
@@ -303,7 +303,7 @@ Schemas werden nicht committed — sie sind instanz-spezifisch (Community-Nodes 
 
 (oder läuft automatisch via SessionStart-Hook beim nächsten Öffnen von Claude Code in diesem Repo)
 
-Prüft Node.js, n8nac-CLI-Version (min 2.3.0, Referenz 2.3.6), Workspace-Binding via `n8nac workspace status`, Live-n8n-Erreichbarkeit, Companion-Plugin aktiviert, Community-Node-Schema-Coverage. Fixe Fehler, bevor du Workflows baust.
+Prüft Node.js, n8nac-CLI-Version (min 2.3.0, Referenz 2.5.0), Workspace-Binding via `n8nac workspace status`, Live-n8n-Erreichbarkeit, Companion-Plugin aktiviert, Community-Node-Schema-Coverage. Fixe Fehler, bevor du Workflows baust.
 
 ---
 

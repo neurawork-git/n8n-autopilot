@@ -65,3 +65,5 @@ docs/STRATEGIC_ANALYSIS.md
 # Transient harness lock
 .claude/scheduled_tasks.lock
 .playwright-mcp/
+
+__pycache__/

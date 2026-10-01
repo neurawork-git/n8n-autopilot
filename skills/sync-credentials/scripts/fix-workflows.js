@@ -227,3 +227,10 @@ if (conflicts.length > 0) {
     }
   }
 }
+
+// Exit 3 == "a --fix-workflows run would actually rewrite something".
+// check-credential-freshness.sh uses this to decide whether emitting
+// AUTOPILOT_ACTION_REQUIRED is honest: a stale ID whose credential *name* does not
+// resolve in the pinned project is an orphan, and the auto-action cannot fix it.
+// Probe and action must test the same condition, or the mandatory signal fires forever.
+if (opts.dryRun && rewrites > 0) process.exit(3);
