@@ -2,6 +2,15 @@
 
 All notable changes to **n8n-autopilot** are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [5.6.1] — 2026-10-06
+
+### Added
+- **Opt-out for the feedback loop.** `N8N_AUTOPILOT_NO_FEEDBACK=1` turns off capture, the
+  SessionStart nudge and the Stop gate; `N8N_AUTOPILOT_NO_FEEDBACK_GATE=1` turns off only the gate.
+  Claude Code has no per-hook toggle and `disableAllHooks` would also drop the safety gates, so the
+  switch lives in the plugin and is read from the `env` block of `settings.json`, which survives
+  plugin updates. `/n8n-autopilot:feedback` keeps working on demand.
+
 ## [5.6.0] — 2026-09-30
 
 The reliability release. Triggered by a full pass over 68 open feedback issues, the synced friction

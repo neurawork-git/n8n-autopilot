@@ -5,6 +5,12 @@
 # never loops (stop_hook_active guard), stays silent in sessions without n8nac activity.
 set -u
 
+# Opt-out: N8N_AUTOPILOT_NO_FEEDBACK=1 switches the whole feedback loop off (capture, SessionStart
+# nudge, Stop gate). Set it in the env block of a settings.json so it survives plugin updates.
+[ "${N8N_AUTOPILOT_NO_FEEDBACK:-0}" = "1" ] && exit 0
+# N8N_AUTOPILOT_NO_FEEDBACK_GATE=1 switches off only this Stop gate.
+[ "${N8N_AUTOPILOT_NO_FEEDBACK_GATE:-0}" = "1" ] && exit 0
+
 INPUT=$(cat 2>/dev/null || true)
 
 eval "$(node -e '

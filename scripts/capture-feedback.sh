@@ -13,6 +13,10 @@
 # NB: PreToolUse hooks get input via $CLAUDE_TOOL_INPUT / $1; SessionEnd gets JSON on STDIN.
 
 # Deliberately NO `set -e` — must never disrupt session shutdown.
+
+# Opt-out: N8N_AUTOPILOT_NO_FEEDBACK=1 switches the whole feedback loop off (capture, SessionStart
+# nudge, Stop gate). Set it in the env block of a settings.json so it survives plugin updates.
+[ "${N8N_AUTOPILOT_NO_FEEDBACK:-0}" = "1" ] && exit 0
 INPUT="$(cat 2>/dev/null || true)"
 [ -z "$INPUT" ] && exit 0
 

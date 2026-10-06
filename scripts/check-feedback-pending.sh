@@ -7,6 +7,10 @@
 # Usage: bash scripts/check-feedback-pending.sh [--quiet]
 # Called by: hooks/hooks.json SessionStart (quiet mode).
 
+# Opt-out: N8N_AUTOPILOT_NO_FEEDBACK=1 switches the whole feedback loop off (capture, SessionStart
+# nudge, Stop gate). Set it in the env block of a settings.json so it survives plugin updates.
+[ "${N8N_AUTOPILOT_NO_FEEDBACK:-0}" = "1" ] && exit 0
+
 # Consumer-repo path: the user's CWD when the SessionStart hook fires.
 # CLAUDE_PLUGIN_ROOT points at the *plugin install* dir, not the workspace.
 REPO_DIR="$PWD"

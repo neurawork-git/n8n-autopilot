@@ -33,6 +33,12 @@ session collapse into the newest (superset) count.
   carries reporter (OS username — by design), plugin version, severity, area, observed/expected/
   suggestion, signal evidence, and the raw finding JSON. The GitHub token lives only in the
   instance's credentials.
+- **Stop gate:** a `Stop` hook (`scripts/suggest-feedback.sh`) asks Claude once per session to offer
+  the review when the session did real n8nac work.
+- **Opt-out:** `N8N_AUTOPILOT_NO_FEEDBACK=1` switches the whole loop off (capture, SessionStart nudge,
+  Stop gate); `N8N_AUTOPILOT_NO_FEEDBACK_GATE=1` switches off only the Stop gate. Set either in the
+  `env` block of a `settings.json` (project or `~/.claude/`), not in the plugin cache, so it survives
+  plugin updates. `/n8n-autopilot:feedback` keeps working on demand.
 - **Refinement:** the `feedback-triage` agent (maintainer-side, needs `gh`) dedups the open feedback
   issues (closes duplicates with cross-reference), adds triage comments, and reports a ranked
   backlog. Re-runnable any time.

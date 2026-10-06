@@ -10,7 +10,7 @@
 
 **A Claude Code plugin that turns natural-language prompts into validated, deployed n8n workflows.**
 
-[![Version](https://img.shields.io/badge/version-5.6.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.6.1-blue.svg)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![n8nac](https://img.shields.io/badge/n8nac-2.7.0%20(min%202.3.0)-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
@@ -146,6 +146,10 @@ loops, …) to a gitignored local store; a `SessionStart` nudge reminds you when
 short interview, and `/n8n-autopilot:feedback sync` pushes everything centrally as one GitHub issue
 (consent-gated — you review every record first). Captured records hold only counts + the repo name,
 never customer data.
+
+To switch the feedback loop off, set `N8N_AUTOPILOT_NO_FEEDBACK=1` in the `env` block of a
+`settings.json` (project or `~/.claude/`). It disables capture, the `SessionStart` nudge and the
+`Stop` gate, and survives plugin updates. `N8N_AUTOPILOT_NO_FEEDBACK_GATE=1` disables only the gate.
 
 ---
 

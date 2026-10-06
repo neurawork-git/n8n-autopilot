@@ -10,7 +10,7 @@
 
 **Ein Claude Code Plugin, das natürlichsprachliche Prompts in validierte, deployte n8n-Workflows verwandelt.**
 
-[![Version](https://img.shields.io/badge/version-5.6.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.6.1-blue.svg)](CHANGELOG.md)
 [![Lizenz: MIT](https://img.shields.io/badge/lizenz-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![n8nac](https://img.shields.io/badge/n8nac-2.5.0%20(min%202.3.0)-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
@@ -146,6 +146,10 @@ einen gitignorierten lokalen Speicher; ein `SessionStart`-Hinweis erinnert dich 
 Feedback. `/n8n-autopilot:feedback` führt ein kurzes Interview, `/n8n-autopilot:feedback sync` schiebt
 alles zentral als ein GitHub-Issue (mit Bestätigung — du prüfst vorher jeden Record). Erfasste Records
 enthalten nur Counts + den Repo-Namen, niemals Kundendaten.
+
+Abschalten: `N8N_AUTOPILOT_NO_FEEDBACK=1` im `env`-Block einer `settings.json` (Projekt oder
+`~/.claude/`) setzen. Das schaltet Erfassung, `SessionStart`-Hinweis und `Stop`-Gate ab und übersteht
+Plugin-Updates. `N8N_AUTOPILOT_NO_FEEDBACK_GATE=1` schaltet nur das Gate ab.
 
 ---
 
