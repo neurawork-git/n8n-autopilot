@@ -2,6 +2,17 @@
 
 All notable changes to **n8n-autopilot** are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [5.6.2] — 2026-10-15
+
+### Fixed
+- **Plain-language deploy requests were refused.** `skills/deploy` carried
+  `disable-model-invocation: true`, while CLAUDE.md (and the `init-repo` template) route
+  "deploy <file>.workflow.ts" to `/n8n-autopilot:deploy` — so Claude could not run the skill unless
+  the user typed the slash command. The flag is gone: the push is already guarded fail-closed by
+  env-gate, push-gate and push-lint-gate and lands as a draft. Activation and the production test
+  stay user-gated inside the skill — they run only when the user asked for them
+  (`--activate` / `--prod`), otherwise the skill asks once after the test-URL run.
+
 ## [5.6.1] — 2026-10-06
 
 ### Added

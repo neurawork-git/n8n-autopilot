@@ -1,9 +1,8 @@
 ---
 name: deploy
-description: Push a local .workflow.ts to n8n, verify remote state, and live-test (test URL by default; `--activate --prod` runs production test). Side-effecting — only invoked explicitly via `/deploy`.
+description: Push a local .workflow.ts to n8n, verify remote state, and live-test (test URL by default; `--activate --prod` runs production test). Use when the user asks to deploy, push or ship an existing .workflow.ts file.
 argument-hint: "<workflow-name>.workflow.ts [--activate] [--prod]"
 user-invocable: true
-disable-model-invocation: true
 allowed-tools: Read, Grep, Glob, Bash(npx:*), Bash(grep:*)
 ---
 
@@ -11,7 +10,14 @@ allowed-tools: Read, Grep, Glob, Bash(npx:*), Bash(grep:*)
 
 Push a local `.workflow.ts` to n8n via `n8nac`, verify remote state, run a live test.
 
-> **Why `disable-model-invocation: true`?** Deploy mutates remote state (push, optional activate, optional production test). Plugin policy: side-effecting skills must be explicitly invoked by the user, never auto-triggered by the model. Skills like `/n8n-autopilot:build-workflow` may auto-trigger because they include user-confirmation gates at the deploy step. Apply the same flag to any future skill that performs an irreversible remote mutation without an explicit user gate.
+> **Model-invocable, with a user gate on activation.** The push itself is guarded fail-closed by the
+> PreToolUse hooks (env-gate, push-gate for drift, push-lint-gate) and lands as a draft — the
+> published version stays live. That is why Claude may run this skill when the user asks to deploy
+> in plain words. **Activation and the production test are the irreversible part:** run step 8 only
+> when the user explicitly asked for it (`--activate` / `--prod` or "aktivieren" / "activate" in
+> their request). Otherwise stop after step 7 and ask once whether to activate.
+> (Before 5.6.2 the skill carried `disable-model-invocation: true`; CLAUDE.md routed plain-language
+> deploy requests to it anyway, so they were refused.)
 
 ## Steps
 
@@ -121,6 +127,9 @@ npx n8nac test <workflowId> --query '<suggestedPayload>'
 
 ### 8. Production test (optional, only with `--activate`)
 
+Only if the user explicitly asked for activation (`--activate`, or said so in their request). If
+they did not, do not activate — ask once after step 7 whether they want it.
+
 If the user passes `--activate`:
 
 1. Activate the workflow:
@@ -166,4 +175,4 @@ Click:        "Publish" button
 - Always validate before pushing.
 - Workflows deploy as inactive by default. `n8nac test` uses the test URL, no activation needed.
 - `--activate` + `--prod` tests against the production webhook URL — use with caution.
-- `disable-model-invocation: true` — deployment has side effects.
+- Never activate or run the production test without an explicit user request — see the gate note at the top.
