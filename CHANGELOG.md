@@ -2,6 +2,31 @@
 
 All notable changes to **n8n-autopilot** are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [5.7.0] — 2026-11-02
+
+### Added
+- **n8n mode per session.** SessionStart probes, the feedback Stop gate and feedback capture now run
+  only while the session's n8n mode is on. Project monorepos carry an `n8n/` folder next to
+  everything else; with the repo-level guard every session there loaded twelve probes and the
+  feedback hooks, whether it touched n8n or not. The mode is always on in a dedicated n8n repo
+  (`N8N_AUTOPILOT_MODE=always` in the settings `env` block, `.n8n-autopilot/mode` = `always`, or
+  root `n8nac-config.json`). Elsewhere it switches on with the first `n8nac` command or the new
+  skill `/n8n-autopilot:n8n-mode [on|off|status]`, which also runs the probes once. Repos that touch
+  n8n but are not always-on get one hint line at session start instead of the probe output.
+  `N8N_AUTOPILOT_MODE=off` keeps the mode off. The PreToolUse safety gates are unaffected.
+
+### Fixed
+- **Feedback Stop gate fired in sessions without n8n work.** It counted lines containing
+  `npx n8nac` anywhere in the transcript — probe output, skill listing and CLAUDE.md hints included —
+  so three hint lines were enough. It now counts Bash/PowerShell `tool_use` calls that run `n8nac`.
+- **PreToolUse gate spawned node before every shell call.** A call whose input mentions neither
+  `n8nac` nor an n8n API now leaves the hook in bash, before any parsing.
+
+### Changed
+- Dedicated n8n repos that relied on the repo guard (workflow files, `.n8n-autopilot/`, CLAUDE.md
+  mention) without a root `n8nac-config.json` now need `N8N_AUTOPILOT_MODE=always` to keep the
+  probes at session start. `init-repo` documents it next to `N8NAC_ENVIRONMENT`.
+
 ## [5.6.2] — 2026-10-15
 
 ### Fixed

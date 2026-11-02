@@ -27,6 +27,10 @@ let inp="";process.stdin.on("data",d=>inp+=d).on("end",()=>{
 [ -n "${SID:-}" ] || exit 0
 [ -n "${TRANSCRIPT:-}" ] && [ -f "$TRANSCRIPT" ] || exit 0
 
+# Only in sessions with the n8n mode on (scripts/lib/n8n-mode.sh).
+. "$(dirname "${BASH_SOURCE[0]}")/lib/n8n-mode.sh"
+n8n_mode_active "$SID" || exit 0
+
 WORKSPACE="${CLAUDE_PROJECT_DIR:-$PWD}"
 STORE="$WORKSPACE/.n8n-autopilot/feedback"
 MARKER="$STORE/.suggested-$SID"
@@ -34,8 +38,19 @@ MARKER="$STORE/.suggested-$SID"
 # Once per session.
 [ -f "$MARKER" ] && exit 0
 
-# Only fire when the session actually did n8nac work.
-N8NAC_CALLS=$(grep -c "npx n8nac" "$TRANSCRIPT" 2>/dev/null || true)
+# Only fire when the session actually did n8nac work: count shell tool calls that ran n8nac.
+# A plain `grep -c` over the transcript also counted SessionStart probe output, skill listings and
+# CLAUDE.md hints mentioning `npx n8nac` — the gate then fired in sessions without any n8n work.
+N8NAC_CALLS=$(node -e '
+const fs=require("fs"); let n=0;
+for (const line of fs.readFileSync(process.argv[1],"utf8").split("\n")) {
+  if (!line.includes("n8nac")) continue;
+  let o; try { o=JSON.parse(line) } catch(e) { continue }
+  if (o.type!=="assistant" || !Array.isArray(o.message&&o.message.content)) continue;
+  for (const b of o.message.content)
+    if (b.type==="tool_use" && /^(Bash|PowerShell)$/.test(b.name) && /\bn8nac\b/.test(String((b.input||{}).command||""))) n++;
+}
+console.log(n);' "$TRANSCRIPT" 2>/dev/null || echo 0)
 case "${N8NAC_CALLS:-0}" in *[!0-9]*) N8NAC_CALLS=0;; esac
 [ "${N8NAC_CALLS:-0}" -ge 3 ] || exit 0
 

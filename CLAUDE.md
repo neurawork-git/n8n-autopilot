@@ -39,6 +39,7 @@ the linked skill / command verbatim. If no row matches, ask the user — do not 
 | "fix stale credential IDs in workflows" | `/n8n-autopilot:sync-credentials --fix-workflows` (project-scoped) |
 | "regenerate inventory / list of nodes" | `/n8n-autopilot:inventory` |
 | "data table CRUD" (create/seed/list/drop tables in n8n) | `/n8n-autopilot:data-tables` |
+| "n8n mode on/off" / "start n8n work here" / "why does n8n-autopilot fire in this repo" | `/n8n-autopilot:n8n-mode [on\|off\|status]` |
 | "give feedback" / "report friction" / "feedback zum plugin" | `/n8n-autopilot:feedback` (interview); `/n8n-autopilot:feedback sync` pushes centrally (consent-gated) |
 | "pull schemas" / "update node schemas" | `/n8n-autopilot:pull-schemas` |
 | "check setup / MCP / instance health" | `/n8n-autopilot:check-mcps` |
@@ -93,6 +94,16 @@ them in order for BOTH shell tools. One-line summary;
 → `/n8n-autopilot:init-repo [target-dir]` scaffolds everything (dir layout, CLAUDE.md/README/
 `.gitignore`/`.mcp.json`/`.env.example`, env flow, schemas, verify). Manual step-by-step,
 plugin install, and the legacy in-repo `./n8nac-config.json` note: **[docs/rules/setup.md](docs/rules/setup.md).**
+
+## n8n mode (per session)
+
+SessionStart probes, the feedback Stop gate and feedback capture run only while the session's n8n
+mode is on. Always on in a dedicated n8n repo (`N8N_AUTOPILOT_MODE=always` in the settings `env`
+block, `.n8n-autopilot/mode` = `always`, or root `n8nac-config.json`); elsewhere — project
+monorepos — it switches on with the first `n8nac` command (silently, via `pretooluse-gate.sh`) or
+`/n8n-autopilot:n8n-mode` (also runs the probes once). The PreToolUse safety gates never depend on
+the mode, and the gate leaves every shell call without `n8nac`/n8n-API text before spawning node.
+Rules: `scripts/lib/n8n-mode.sh`.
 
 ## Auto-Reactions on SessionStart
 

@@ -5,62 +5,67 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/report-session-env.sh 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/n8n-mode.sh hint 2>/dev/null || true",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/n8n-mode.sh guard && bash ${CLAUDE_PLUGIN_ROOT}/scripts/report-session-env.sh 2>&1 || true",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/setup-check.sh 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/n8n-mode.sh guard && bash ${CLAUDE_PLUGIN_ROOT}/scripts/setup-check.sh 2>&1 || true",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-schema-versions.sh --quiet 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/n8n-mode.sh guard && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-schema-versions.sh --quiet 2>&1 || true",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-credential-freshness.sh --quiet 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/n8n-mode.sh guard && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-credential-freshness.sh --quiet 2>&1 || true",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-mirror-drift.sh --quiet 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/n8n-mode.sh guard && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-mirror-drift.sh --quiet 2>&1 || true",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-workspace-migration.sh --quiet 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/n8n-mode.sh guard && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-workspace-migration.sh --quiet 2>&1 || true",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-custom-nodes-resolution.sh --quiet 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/n8n-mode.sh guard && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-custom-nodes-resolution.sh --quiet 2>&1 || true",
             "timeout": 30
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-instance-cache.sh --quiet 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/n8n-mode.sh guard && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-instance-cache.sh --quiet 2>&1 || true",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && node ${CLAUDE_PLUGIN_ROOT}/scripts/check-native-mcp.mjs --quiet 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/n8n-mode.sh guard && node ${CLAUDE_PLUGIN_ROOT}/scripts/check-native-mcp.mjs --quiet 2>&1 || true",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-feedback-pending.sh --quiet 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/n8n-mode.sh guard && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-feedback-pending.sh --quiet 2>&1 || true",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-plugin-version.sh 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/n8n-mode.sh guard && bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-plugin-version.sh 2>&1 || true",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/capture-feedback.sh 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/capture-feedback.sh 2>&1 || true",
             "timeout": 10
           }
         ]
@@ -71,7 +76,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/capture-feedback.sh 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/capture-feedback.sh 2>&1 || true",
             "timeout": 10
           }
         ]
@@ -82,7 +87,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/capture-feedback.sh 2>&1 || true",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/capture-feedback.sh 2>&1 || true",
             "timeout": 10
           }
         ]
@@ -93,7 +98,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/n8n-repo-guard.sh && bash ${CLAUDE_PLUGIN_ROOT}/scripts/suggest-feedback.sh",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/suggest-feedback.sh",
             "timeout": 10
           }
         ]

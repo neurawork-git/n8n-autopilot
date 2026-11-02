@@ -20,6 +20,11 @@
 INPUT="$(cat 2>/dev/null || true)"
 [ -z "$INPUT" ] && exit 0
 
+# Only sessions with the n8n mode on (scripts/lib/n8n-mode.sh).
+. "$(dirname "${BASH_SOURCE[0]}")/lib/n8n-mode.sh"
+SID="$(printf '%s' "$INPUT" | grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
+n8n_mode_active "$SID" || exit 0
+
 printf '%s' "$INPUT" | node -e '
 let d=""; process.stdin.on("data",c=>d+=c); process.stdin.on("end",()=>{
   try {

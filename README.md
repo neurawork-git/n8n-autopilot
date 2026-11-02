@@ -10,7 +10,7 @@
 
 **A Claude Code plugin that turns natural-language prompts into validated, deployed n8n workflows.**
 
-[![Version](https://img.shields.io/badge/version-5.6.1-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.7.0-blue.svg)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![n8nac](https://img.shields.io/badge/n8nac-2.7.0%20(min%202.3.0)-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
@@ -150,6 +150,15 @@ never customer data.
 To switch the feedback loop off, set `N8N_AUTOPILOT_NO_FEEDBACK=1` in the `env` block of a
 `settings.json` (project or `~/.claude/`). It disables capture, the `SessionStart` nudge and the
 `Stop` gate, and survives plugin updates. `N8N_AUTOPILOT_NO_FEEDBACK_GATE=1` disables only the gate.
+
+### n8n mode — per session, not per repo
+
+Capture, the `Stop` gate and the `SessionStart` probes only run while the session's **n8n mode** is
+on. In a dedicated n8n repo it is always on (`N8N_AUTOPILOT_MODE=always` in the `env` block of
+`.claude/settings.json`, a `.n8n-autopilot/mode` file containing `always`, or `n8nac-config.json` in
+the root). Everywhere else — e.g. a project monorepo with an `n8n/` folder — it starts off and
+switches on with the first `n8nac` command or `/n8n-autopilot:n8n-mode`. The safety gates on n8nac
+commands (env, push, lint, no direct REST) always apply. `N8N_AUTOPILOT_MODE=off` keeps it off.
 
 ---
 
@@ -439,7 +448,9 @@ n8n-autopilot/
 │   ├── enforce-env.sh               one env per session (blocks un-pinned instance commands)
 │   ├── push-gate.sh                 on `n8nac push`: blocks on remote drift (CONFLICT/DIVERGED)
 │   ├── push-lint-gate.sh            on `n8nac push`: instance node check + param-version-check.py + lint-workflow.py, fail-closed
-│   ├── lib/n8n-repo-guard.sh        SessionStart probes run only in repos that touch n8n (#77)
+│   ├── n8n-mode.sh                  per-session n8n mode: on/off/status, SessionStart guard + hint
+│   ├── lib/n8n-mode.sh              mode rules (always-on repo vs. session marker)
+│   ├── lib/n8n-repo-guard.sh        does the repo touch n8n at all? (drives the SessionStart hint, #77)
 │   ├── lint-workflow.py             Deterministic design-quality rules on the compiled JSON (`--selftest`)
 │   ├── n8n-native-proxy.mjs         Plugin MCP server `n8n-native`: test/read tools of the session env's instance
 │   ├── instance-node-check.mjs      Push-lint stage 1: node type + typeVersion exist on the instance (get_node_types)

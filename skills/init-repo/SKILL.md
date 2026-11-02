@@ -120,8 +120,13 @@ inherits, and the plugin's env-gate blocks it unconditionally (#49). A repo pins
 `.claude/settings.json` instead, so every session opened in it (and every subagent) targets it:
 
 ```json
-{ "env": { "N8NAC_ENVIRONMENT": "<env-name>" } }
+{ "env": { "N8NAC_ENVIRONMENT": "<env-name>", "N8N_AUTOPILOT_MODE": "always" } }
 ```
+
+`N8N_AUTOPILOT_MODE: always` only for a **dedicated** n8n repo: every session there loads the
+SessionStart probes and the feedback hooks. In a project monorepo (n8n is one folder among many)
+leave it out — the n8n mode then switches on per session, with the first n8nac command or
+`/n8n-autopilot:n8n-mode` (see `skills/n8n-mode`).
 
 Write that file (merge into an existing one; keep it TRACKED in git — see the `.gitignore` note
 below) and verify with the session-aware command (not `workspace status`, which is env-blind):

@@ -34,7 +34,12 @@ session collapse into the newest (superset) count.
   suggestion, signal evidence, and the raw finding JSON. The GitHub token lives only in the
   instance's credentials.
 - **Stop gate:** a `Stop` hook (`scripts/suggest-feedback.sh`) asks Claude once per session to offer
-  the review when the session did real n8nac work.
+  the review when the session did real n8nac work — at least 3 Bash/PowerShell tool calls running
+  `n8nac`, counted from the transcript's `tool_use` blocks. Until 5.7.0 it grepped the whole
+  transcript for `npx n8nac`, so probe output and CLAUDE.md hints made it fire in sessions without
+  any n8n work.
+- **n8n mode:** capture and Stop gate run only while the session's n8n mode is on (always-on repo,
+  first n8nac command, or `/n8n-autopilot:n8n-mode`) — see `scripts/lib/n8n-mode.sh`.
 - **Opt-out:** `N8N_AUTOPILOT_NO_FEEDBACK=1` switches the whole loop off (capture, SessionStart nudge,
   Stop gate); `N8N_AUTOPILOT_NO_FEEDBACK_GATE=1` switches off only the Stop gate. Set either in the
   `env` block of a `settings.json` (project or `~/.claude/`), not in the plugin cache, so it survives

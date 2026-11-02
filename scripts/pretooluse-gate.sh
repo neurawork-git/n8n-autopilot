@@ -20,6 +20,14 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 RAW="$(cat 2>/dev/null || true)"
+# Fast path: this hook runs before EVERY shell call in every session. A call that mentions neither
+# n8nac nor an n8n API cannot trip any gate below — leave without spawning node.
+if [ -n "$RAW" ]; then
+  case "$RAW" in
+    *n8nac*|*/api/v1*|*n8n.cloud*|*n8n.io*) ;;
+    *) exit 0 ;;
+  esac
+fi
 CMD=""
 if [ -n "$RAW" ]; then
   CMD="$(printf '%s' "$RAW" | node -e '
@@ -32,6 +40,16 @@ fi
 [ -z "$CMD" ] && CMD="${CLAUDE_TOOL_INPUT:-}"
 [ -z "$CMD" ] && CMD="${1:-}"
 [ -z "$CMD" ] && exit 0
+
+# ── 0. the first n8nac command switches the session's n8n mode on (scripts/lib/n8n-mode.sh), so the
+#       feedback hooks see this session as n8n work. Never blocks.
+if [ -n "$RAW" ] && printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])n8nac([^A-Za-z0-9_-]|$)' 2>/dev/null; then
+  . "$HERE/lib/n8n-mode.sh"
+  SID="$(printf '%s' "$RAW" | grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
+  if [ "${N8N_AUTOPILOT_MODE:-}" != "off" ] && ! n8n_mode_active "$SID"; then
+    n8n_mode_enable "$SID" auto || true
+  fi
+fi
 
 # ── 1. curl-block — direct REST calls against the n8n API bypass every gate below.
 if printf '%s' "$CMD" | grep -qE '(curl|wget|urllib|Invoke-RestMethod|Invoke-WebRequest|requests\.|fetch\().*(/api/v1|n8n\.cloud|n8n\.io)' 2>/dev/null; then
