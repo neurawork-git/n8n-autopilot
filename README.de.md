@@ -10,7 +10,7 @@
 
 **Ein Claude Code Plugin, das natürlichsprachliche Prompts in validierte, deployte n8n-Workflows verwandelt.**
 
-[![Version](https://img.shields.io/badge/version-5.7.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.7.1-blue.svg)](CHANGELOG.md)
 [![Lizenz: MIT](https://img.shields.io/badge/lizenz-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![n8nac](https://img.shields.io/badge/n8nac-2.5.0%20(min%202.3.0)-ff6d5a.svg)](https://www.npmjs.com/package/n8nac)
@@ -154,10 +154,12 @@ Plugin-Updates. `N8N_AUTOPILOT_NO_FEEDBACK_GATE=1` schaltet nur das Gate ab.
 ### n8n-Modus — pro Sitzung, nicht pro Repo
 
 Erfassung, `Stop`-Gate und die `SessionStart`-Prüfungen laufen nur, solange der **n8n-Modus** der
-Sitzung an ist. In einem reinen n8n-Repo ist er immer an (`N8N_AUTOPILOT_MODE=always` im `env`-Block
-der `.claude/settings.json`, eine Datei `.n8n-autopilot/mode` mit `always` oder `n8nac-config.json` im
-Root). Überall sonst — etwa in einem Projekt-Monorepo mit `n8n/`-Ordner — startet er aus und geht mit
-dem ersten `n8nac`-Befehl oder `/n8n-autopilot:n8n-mode` an. Die Schutz-Gates auf n8nac-Befehlen
+Sitzung an ist. Immer an ist er, wenn der Projektordner ein n8n-Arbeitsbereich ist: `workflows/` mit
+`*.workflow.ts` im Root (reines n8n-Repo oder der `n8n/`-Ordner eines Monorepos als eigenes Projekt
+geöffnet), `n8nac-config.json` im Root, `N8N_AUTOPILOT_MODE=always` im `env`-Block der
+`.claude/settings.json` oder eine Datei `.n8n-autopilot/mode` mit `always`. Im Root eines
+Projekt-Monorepos startet er aus (eine Hinweiszeile beim Start) und geht mit dem ersten
+`n8nac`-Befehl oder `/n8n-autopilot:n8n-mode` an — dann laufen die Prüfungen im `n8n/`-Ordner. Die Schutz-Gates auf n8nac-Befehlen
 (Env, Push, Lint, kein direkter REST-Aufruf) greifen immer. `N8N_AUTOPILOT_MODE=off` hält ihn aus.
 
 ---

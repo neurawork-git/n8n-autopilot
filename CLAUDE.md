@@ -63,7 +63,11 @@ before any cred-touching operation (for the session *env*, use `env list --json`
 
 Three fail-closed gates protect against drift, cross-session env clobbering and shipping a broken workflow. One
 `PreToolUse` entry (`matcher: Bash|PowerShell` → `scripts/pretooluse-gate.sh`, reads the hook's stdin JSON) runs
-them in order for BOTH shell tools. One-line summary;
+them in order for BOTH shell tools. Before the gates it normalizes the command
+(`scripts/lib/normalize-n8nac-cmd.mjs`): `n8nac@<ver>` → `n8nac`, global `--env <e>` → inline
+`N8NAC_ENVIRONMENT=<e>` (also exported for the gates' own n8nac calls), and a leading `cd <dir> &&` is
+executed so files resolve from there — until 5.7.1 those three forms walked past push-gate and lint.
+Self-test: `bash scripts/test-pretooluse-gate.sh`. One-line summary;
 **full mechanism + bypass + reconciliation in [docs/rules/gates.md](docs/rules/gates.md).**
 
 - **Push-Gate** (`scripts/push-gate.sh`) — blocks `npx n8nac push` when remote status is
@@ -98,10 +102,11 @@ plugin install, and the legacy in-repo `./n8nac-config.json` note: **[docs/rules
 ## n8n mode (per session)
 
 SessionStart probes, the feedback Stop gate and feedback capture run only while the session's n8n
-mode is on. Always on in a dedicated n8n repo (`N8N_AUTOPILOT_MODE=always` in the settings `env`
-block, `.n8n-autopilot/mode` = `always`, or root `n8nac-config.json`); elsewhere — project
-monorepos — it switches on with the first `n8nac` command (silently, via `pretooluse-gate.sh`) or
-`/n8n-autopilot:n8n-mode` (also runs the probes once). The PreToolUse safety gates never depend on
+mode is on. Always on where the project dir is an n8n workspace (`workflows/*.workflow.ts` or
+`n8nac-config.json` in the root, `N8N_AUTOPILOT_MODE=always` in the settings `env` block, or
+`.n8n-autopilot/mode` = `always`); in a project monorepo's root it switches on with the first command
+that runs `n8nac` (silently, via `pretooluse-gate.sh`) or `/n8n-autopilot:n8n-mode` (also runs the
+probes once, inside the `n8n/` subfolder). Self-test: `bash scripts/test-n8n-mode.sh`. The PreToolUse safety gates never depend on
 the mode, and the gate leaves every shell call without `n8nac`/n8n-API text before spawning node.
 Rules: `scripts/lib/n8n-mode.sh`.
 

@@ -43,8 +43,8 @@ fi
 
 # ── 0. the first n8nac command switches the session's n8n mode on (scripts/lib/n8n-mode.sh), so the
 #       feedback hooks see this session as n8n work. Never blocks.
-if [ -n "$RAW" ] && printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])n8nac([^A-Za-z0-9_-]|$)' 2>/dev/null; then
-  . "$HERE/lib/n8n-mode.sh"
+. "$HERE/lib/n8n-mode.sh"
+if [ -n "$RAW" ] && n8n_mode_is_n8nac_call "$CMD"; then
   SID="$(printf '%s' "$RAW" | grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
   if [ "${N8N_AUTOPILOT_MODE:-}" != "off" ] && ! n8n_mode_active "$SID"; then
     n8n_mode_enable "$SID" auto || true
@@ -56,6 +56,23 @@ if printf '%s' "$CMD" | grep -qE '(curl|wget|urllib|Invoke-RestMethod|Invoke-Web
   if ! printf '%s' "$CMD" | grep -qE '/api/v1/data-tables' 2>/dev/null; then
     echo 'BLOCKED: Use n8nac CLI instead of direct API calls (curl/wget/urllib/Invoke-RestMethod). Carve-out: /api/v1/data-tables is allowed — loop the curl from the /n8n-autopilot:data-tables skill, do not switch HTTP tool to dodge this.' >&2
     exit 2
+  fi
+fi
+
+# ── normalize for the n8nac gates (lib/normalize-n8nac-cmd.mjs): version pin, global --env and a
+#    leading `cd <dir> &&` hid push/env commands from the gates below. The gates then run from that
+#    dir, with the env the command names, so push-gate's own n8nac calls hit the right instance.
+if printf '%s' "$CMD" | grep -q 'n8nac' 2>/dev/null; then
+  N_CMD=""; GATE_ENV=""; GATE_CD=""; N_OK=""
+  { IFS= read -r -d '' N_CMD && IFS= read -r -d '' GATE_ENV && IFS= read -r -d '' GATE_CD && N_OK=1; } \
+    < <(node "$HERE/lib/normalize-n8nac-cmd.mjs" "$CMD" 2>/dev/null)
+  # On a normalizer failure keep the original command — the gates still see it as before.
+  if [ -n "$N_OK" ] && [ -n "$N_CMD" ]; then
+    CMD="$N_CMD"
+    [ -n "$GATE_ENV" ] && export N8NAC_ENVIRONMENT="$GATE_ENV"
+    # A missing cd target (e.g. a repeated `cd n8n &&` while the shell already sits in n8n/) makes
+    # the command fail on its own under `&&`; under `;` it continues here — so check from here.
+    [ -n "${GATE_CD:-}" ] && { cd "$GATE_CD" 2>/dev/null || true; }
   fi
 fi
 

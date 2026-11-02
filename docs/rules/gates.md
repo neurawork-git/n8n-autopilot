@@ -19,6 +19,13 @@ line in any tool result. The gates only ever fired when invoked by hand with an 
 PowerShell tool was not matched at all. `bash scripts/test-pretooluse-gate.sh` feeds the dispatcher
 stdin JSON for both tools and asserts the blocks; run it after any hook change.
 
+Until 5.7.1 the gates also missed three command forms because they matched `n8nac <subcommand>`
+literally and resolved files from the session root: `npx -y n8nac@2.7.0 push …` (version pin),
+`npx n8nac --env <e> push …` (global flag) and `cd n8n && npx n8nac push …` (monorepo). The
+dispatcher now normalizes the command first (`scripts/lib/normalize-n8nac-cmd.mjs`) and runs the
+gates from the `cd` target with the named env exported. A missing `cd` target (the shell already
+sits in `n8n/`) keeps the current directory instead of blocking.
+
 ---
 
 ## Push-Gate (drift protection — `scripts/push-gate.sh`)

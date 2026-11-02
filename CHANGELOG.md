@@ -2,6 +2,39 @@
 
 All notable changes to **n8n-autopilot** are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [5.7.1] — 2026-11-02
+
+Follow-up after testing 5.7.0 in real project monorepos (n8n workspace in an `n8n/` subfolder with
+its own `.claude/settings.json`) and in live headless Claude Code sessions.
+
+### Fixed
+- **Push-gate and push-lint never saw two common command forms.** Both matched `n8nac push` only, so
+  `npx -y n8nac@2.7.0 push …` (version pin, the form consumer CLAUDE.md files prescribe) and
+  `npx n8nac --env <e> push …` (global flag, documented in the cheat-sheet) pushed without drift
+  check and without lint. `pretooluse-gate.sh` now normalizes the command once
+  (`scripts/lib/normalize-n8nac-cmd.mjs`) before any gate runs: drops `@<version>`, turns a global
+  `--env` into an inline `N8NAC_ENVIRONMENT`, and runs the gates from a leading `cd <dir> &&` —
+  push-gate used to resolve the file from the session root and silently allowed a monorepo push.
+  The gates' own n8nac calls now use the env the command names instead of the global active env.
+- **Local n8nac commands with a version pin were blocked** without a session env
+  (`npx n8nac@2.7.0 skills search …`, `--version`) — same root cause.
+- **Monorepo n8n/ opened as its own project lost the probes** in 5.7.0: always-on now also covers
+  `workflows/*.workflow.ts` in the project root (dedicated n8n repos and a monorepo's `n8n/`), so no
+  existing n8n repo needs `N8N_AUTOPILOT_MODE=always` — the 5.7.0 "Changed" note no longer applies.
+- **Feedback landed in the monorepo root** as an untracked `.n8n-autopilot/`; capture and Stop gate
+  now write into the n8n workspace (`n8n/.n8n-autopilot/`, covered by its `.gitignore`).
+- **`grep n8nac` counted as n8n work.** Mode auto-enable and the Stop gate now count only commands
+  that run n8nac (`npx n8nac`, `n8nac` at a command position, `ENV=x n8nac`).
+- **SessionStart hint fired in any repo whose CLAUDE.md mentioned n8nac**; it now appears only when
+  an n8n workspace sits in a subfolder. `lib/n8n-repo-guard.sh` is gone.
+
+### Changed
+- `/n8n-autopilot:n8n-mode on` in a monorepo root runs the probes inside `n8n/` and takes
+  `N8NAC_ENVIRONMENT` from `n8n/.claude/settings.json` when the session has none.
+
+### Added
+- `scripts/test-n8n-mode.sh` (52 checks) and 13 new cases in `scripts/test-pretooluse-gate.sh` (26 total).
+
 ## [5.7.0] — 2026-11-02
 
 ### Added

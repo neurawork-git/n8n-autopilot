@@ -24,6 +24,11 @@ INPUT="$(cat 2>/dev/null || true)"
 . "$(dirname "${BASH_SOURCE[0]}")/lib/n8n-mode.sh"
 SID="$(printf '%s' "$INPUT" | grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
 n8n_mode_active "$SID" || exit 0
+# Store in the n8n workspace (a monorepo's n8n/, covered by its .gitignore), not the session root.
+N8N_AUTOPILOT_FEEDBACK_ROOT="$(n8n_mode_workspace)"
+# Git-Bash on Windows: node cannot open /c/… paths.
+command -v cygpath >/dev/null 2>&1 && N8N_AUTOPILOT_FEEDBACK_ROOT="$(cygpath -m "$N8N_AUTOPILOT_FEEDBACK_ROOT")"
+export N8N_AUTOPILOT_FEEDBACK_ROOT
 
 printf '%s' "$INPUT" | node -e '
 let d=""; process.stdin.on("data",c=>d+=c); process.stdin.on("end",()=>{
@@ -122,7 +127,7 @@ let d=""; process.stdin.on("data",c=>d+=c); process.stdin.on("end",()=>{
       synced: false
     };
 
-    const store = path.join(cwd,".n8n-autopilot","feedback");
+    const store = path.join(process.env.N8N_AUTOPILOT_FEEDBACK_ROOT || cwd,".n8n-autopilot","feedback");
     fs.mkdirSync(store,{recursive:true});
     const file = path.join(store,"events.ndjson");
     // One UNSYNCED event per session, last-write-wins: a resumed session re-scans a superset

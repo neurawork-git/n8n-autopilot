@@ -14,7 +14,8 @@ Run, with the argument the user gave (default `on`):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/n8n-mode.sh" <on|off|status> "${CLAUDE_SESSION_ID}"
 ```
 
-Show the output. With `on` it also runs the SessionStart probes once — follow any
+`on` runs the probes against the instance and takes about a minute — give the Bash call a
+5-minute timeout. Show the output. With `on` it also runs the SessionStart probes once — follow any
 `AUTOPILOT_ACTION_REQUIRED:` line exactly as CLAUDE.md "Auto-Reactions on SessionStart" says.
 
 ## How the mode works
@@ -22,13 +23,20 @@ Show the output. With `on` it also runs the SessionStart probes once — follow 
 | Repo / session | Probes at session start | Feedback Stop gate + capture | Safety gates on n8nac commands |
 |---|---|---|---|
 | always-on repo | yes | yes | yes |
-| other repo, mode off | no (one hint line if the repo contains n8n files) | no | yes |
+| other repo, mode off | no (one hint line if an n8n workspace sits in a subfolder) | no | yes |
 | other repo, mode on (this skill or first `n8nac` command) | once, when switched on via this skill | yes | yes |
 
-**Always-on** (dedicated n8n repos) — any of:
+**Always-on** (the project dir is an n8n workspace) — any of:
+- `workflows/` in the project root holding `*.workflow.ts` — a dedicated n8n repo, or a monorepo's
+  `n8n/` folder opened as its own project
+- `n8nac-config.json` in the project root
 - `N8N_AUTOPILOT_MODE=always` in the `env` block of `.claude/settings.json`
 - `.n8n-autopilot/mode` containing the line `always`
-- `n8nac-config.json` in the project root
+
+A session in a monorepo root (workflows under `n8n/workflows/`) starts with the mode off. When this
+skill switches it on there, it runs the probes inside the `n8n/` folder and takes
+`N8NAC_ENVIRONMENT` from `n8n/.claude/settings.json` if the session has none — the session's own
+shell still lacks it, so pass `--env <name>` or prefix `N8NAC_ENVIRONMENT=<name>` on n8nac calls.
 
 `N8N_AUTOPILOT_MODE=off` keeps the mode off, even after an n8nac command.
 

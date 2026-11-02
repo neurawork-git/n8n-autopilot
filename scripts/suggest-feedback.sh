@@ -31,7 +31,8 @@ let inp="";process.stdin.on("data",d=>inp+=d).on("end",()=>{
 . "$(dirname "${BASH_SOURCE[0]}")/lib/n8n-mode.sh"
 n8n_mode_active "$SID" || exit 0
 
-WORKSPACE="${CLAUDE_PROJECT_DIR:-$PWD}"
+# Feedback lives in the n8n workspace — a monorepo's n8n/, where .gitignore covers it.
+WORKSPACE="$(n8n_mode_workspace)"
 STORE="$WORKSPACE/.n8n-autopilot/feedback"
 MARKER="$STORE/.suggested-$SID"
 
@@ -41,14 +42,16 @@ MARKER="$STORE/.suggested-$SID"
 # Only fire when the session actually did n8nac work: count shell tool calls that ran n8nac.
 # A plain `grep -c` over the transcript also counted SessionStart probe output, skill listings and
 # CLAUDE.md hints mentioning `npx n8nac` — the gate then fired in sessions without any n8n work.
+# Same "runs n8nac" rule as n8n_mode_is_n8nac_call (lib/n8n-mode.sh), so `grep n8nac` does not count.
 N8NAC_CALLS=$(node -e '
 const fs=require("fs"); let n=0;
+const RUNS=/(^|[;&|(`]|npx\s+(-y\s+|--yes\s+)?|[A-Za-z_][A-Za-z0-9_]*=\S*\s+)\s*n8nac(@\S+)?(\s|$)/m;
 for (const line of fs.readFileSync(process.argv[1],"utf8").split("\n")) {
   if (!line.includes("n8nac")) continue;
   let o; try { o=JSON.parse(line) } catch(e) { continue }
   if (o.type!=="assistant" || !Array.isArray(o.message&&o.message.content)) continue;
   for (const b of o.message.content)
-    if (b.type==="tool_use" && /^(Bash|PowerShell)$/.test(b.name) && /\bn8nac\b/.test(String((b.input||{}).command||""))) n++;
+    if (b.type==="tool_use" && /^(Bash|PowerShell)$/.test(b.name) && RUNS.test(String((b.input||{}).command||""))) n++;
 }
 console.log(n);' "$TRANSCRIPT" 2>/dev/null || echo 0)
 case "${N8NAC_CALLS:-0}" in *[!0-9]*) N8NAC_CALLS=0;; esac
